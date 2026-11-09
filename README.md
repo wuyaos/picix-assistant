@@ -55,14 +55,14 @@ wsl -u root -e sh -c "sh /mnt/d/work/project/person/picix-assistant/docker/deplo
 ```bash
 # compose 已参数化镜像名，docker/login 后：
 echo "$GITHUB_PAT" | docker login ghcr.io -u wuyaos --password-stdin   # 私有包需要；包转公开可跳过
-docker pull ghcr.io/wuyaos/picix-assistant:1.0.2
-PICIX_IMAGE=ghcr.io/wuyaos/picix-assistant:1.0.2 docker compose up -d --no-build
+docker pull ghcr.io/wuyaos/picix-assistant:1.0.3
+PICIX_IMAGE=ghcr.io/wuyaos/picix-assistant:1.0.3 docker compose up -d --no-build
 ```
 
 首次启动会自动解包/下载 Chromium 到卷（约 1-2 分钟），之后秒级。数据在 `./data`，升级仅换镜像 tag。
 首次启动自动就绪 Chromium：卷内缓存 → 种子包 `/tmp/cb.tar.gz` → GitHub Releases 直下免费包（约 217MB，无需 license；代理自动复用 `HTTPS_PROXY`，缺省用 `PICIX_PROXY`）。之后秒级启动。数据在 `./data`，升级仅换镜像 tag。
 
-镜像约 0.67GB（Chromium 已移到持久卷，不再打进镜像）：`frontend` 多阶段构建（node:22-alpine → python:3.12-slim）；apt 层已清 lists。体积构成：Python 依赖 ~208MB、apt 运行库 ~350MB、基础镜像 ~80MB。Chromium 存于命名卷 `cloakbrowser_cache`（`docker volume ls` 可见），升级镜像/`up -d` 不会重新下载；仅当卷被删且无种子包时才走在线下载（`CB_DOWNLOAD_URL` 可覆盖下载地址）。
+镜像约 0.67GB（Chromium 已移到持久卷，不再打进镜像）：`frontend` 多阶段构建（node:22-alpine → python:3.12-slim）；apt 层已清 lists。体积构成：Python 依赖 ~208MB、apt 运行库 ~350MB、基础镜像 ~80MB。Chromium 存于命名卷 `cloakbrowser_cache`（`docker volume ls` 可见），升级镜像/`up -d` 不会重新下载；仅当卷被删且无种子包时才走在线下载——默认按 GitHub → ghfast.top → ghproxy.net → gh.llkk.cc 顺序各试两轮（`CB_MIRROR_PREFIXES` 逗号分隔自定义镜像前缀，`CB_DOWNLOAD_URL` 只试单一指定地址）。
 
 ## 环境变量
 
@@ -92,7 +92,7 @@ CloakBrowser 层：
 
 ## 版本
 
-单一来源：`backend/app/version.py` 的 `APP_VERSION`。改完重建部署，顶栏品牌旁与 `/api/status.version` 自动带出。语义化版本：MINOR=功能/界面迭代，PATCH=修复。当前 `v1.0.2`。
+单一来源：`backend/app/version.py` 的 `APP_VERSION`。改完重建部署，顶栏品牌旁与 `/api/status.version` 自动带出。语义化版本：MINOR=功能/界面迭代，PATCH=修复。当前 `v1.0.3`。
 
 ## 快速开始
 

@@ -34,17 +34,28 @@ if [ -z "$CLOAKBROWSER_BINARY_PATH" ]; then
 import os, sys, tarfile, time, urllib.request
 
 cache, ver = sys.argv[1], sys.argv[2]
-url = os.environ.get(
-    "CB_DOWNLOAD_URL",
-    f"https://github.com/CloakHQ/CloakBrowser/releases/download/chromium-v{ver}/cloakbrowser-linux-x64.tar.gz",
-)
+raw_url = f"https://github.com/CloakHQ/CloakBrowser/releases/download/chromium-v{ver}/cloakbrowser-linux-x64.tar.gz"
+single = os.environ.get("CB_DOWNLOAD_URL")
+if single:
+    urls = [single]
+else:
+    prefixes = [
+        p.strip().rstrip("/")
+        for p in os.environ.get(
+            "CB_MIRROR_PREFIXES",
+            "https://ghfast.top/,https://ghproxy.net/,https://gh.llkk.cc/",
+        ).split(",")
+        if p.strip()
+    ]
+    urls = [raw_url] + [f"{p}/{raw_url}" for p in prefixes]
 dest_dir = os.path.join(cache, f"chromium-{ver}-pro")
 os.makedirs(dest_dir, exist_ok=True)
 tmp = os.path.join(cache, ".cb-download.tar.gz")
 last = None
-for attempt in (1, 2, 3):
+plan = urls * 2
+for attempt, url in enumerate(plan, 1):
     try:
-        print(f"[entrypoint] 下载 {url}（第 {attempt}/3 次）")
+        print(f"[entrypoint] 下载（{attempt}/{len(plan)}）: {url}")
         with urllib.request.urlopen(url, timeout=120) as resp, open(tmp, "wb") as f:
             total = 0
             while True:
@@ -64,14 +75,14 @@ for attempt in (1, 2, 3):
         print(f"[entrypoint] Chromium 就绪: {chrome}")
         sys.exit(0)
     except Exception as exc:  # noqa: BLE001
-        last = exc
+        last = f"{url} -> {exc}"
         try:
             os.remove(tmp)
         except OSError:
             pass
-        time.sleep(attempt * 5)
-print(f"[entrypoint] 在线下载失败（{last}），浏览器功能将不可用")
-print("[entrypoint] 可选处理：compose 里加 HTTPS_PROXY 环境变量走代理，或挂载种子包 /tmp/cb.tar.gz")
+        time.sleep(3)
+print(f"[entrypoint] 全部下载源失败（最后错误: {last}），浏览器功能将不可用")
+print("[entrypoint] 可选处理：compose 加 HTTPS_PROXY（缺省复用 PICIX_PROXY）/ 挂载种子包 /tmp/cb.tar.gz / CB_MIRROR_PREFIXES 自定义镜像前缀")
 sys.exit(1)
 PYEOF
   if [ -x "$DIR/chrome" ]; then
