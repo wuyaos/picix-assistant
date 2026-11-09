@@ -27,7 +27,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "tg_api_id": 0,  # Telegram API 凭据（my.telegram.org 申请）
     "tg_api_hash": "",
     "tg_auto_login": False,  # 登录需确认时自动经 TG 会话发送确认消息
-    "notify_target": "me",  # 推送目标：me=保存的消息；@username=公开频道；纯数字=Telegram ID
+    "notify_target": "me",  # Bot 推送目标：纯数字 chat_id（bot 私聊为用户数字 ID；频道/群组为 -100 开头 ID）
+    "bot_token": "",  # Bot 推送 token（@BotFather 创建）；唯一推送通道
+    "bot_chat_id": 0,  # Bot 推送目标 chat_id（0=未设置，先给 bot 发一条消息再用 getUpdates 获取）
 }
 
 _SCHEMA = """

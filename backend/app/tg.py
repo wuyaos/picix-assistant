@@ -23,6 +23,8 @@ import time
 from typing import Any
 from urllib.parse import urlparse
 
+import httpx
+
 from .store import Store
 
 log = logging.getLogger("picix.tg")
@@ -279,6 +281,61 @@ async def send_login_confirm(store: Store, code: str) -> dict[str, Any]:
         with contextlib.suppress(Exception):
             await client.disconnect()
 
+
+
+async def bot_send(store: Store, text: str, target: int | None = None) -> dict[str, Any]:
+    """经 Bot API 发送推送（唯一推送通道）。target 缺省用配置 bot_chat_id。"""
+    cfg = store.get_config()
+    token = (cfg.get("bot_token") or "").strip()
+    chat_id = target if target is not None else int(cfg.get("bot_chat_id") or 0)
+    if not token:
+        raise TgError("未配置 Bot 推送 token（在 @BotFather 创建后填入配置页）")
+    if not chat_id:
+        raise TgError("未配置推送目标 chat_id（先给你的 bot 发一条消息，再点「获取 chat_id」）")
+    proxy = (cfg.get("proxy") or "").strip() or None
+    url = f"https://api.telegram.org/bot{token}/sendMessage"
+    payload = {"chat_id": chat_id, "text": text}
+    try:
+        async with httpx.AsyncClient(proxy=proxy, timeout=10) as c:
+            r = await c.post(url, json=payload)
+    except (httpx.HTTPError, httpx.InvalidURL) as e:
+        raise TgError(f"Bot 推送请求失败：{e}") from e
+    if r.status_code != 200:
+        desc = ""
+        try:
+            desc = r.json().get("description", "")
+        except Exception:  # noqa: BLE001
+            pass
+        raise TgError(f"Bot 推送被拒绝（HTTP {r.status_code}）{desc}")
+    log.info("已发送 Bot 推送到 chat_id=%s（%d 字）", chat_id, len(text))
+    return {"sent": True, "chat_id": chat_id}
+
+
+async def bot_get_chat_id(store: Store) -> dict[str, Any]:
+    """从 getUpdates 取最近一条用户消息的 chat_id（用户先给 bot 发过消息）。"""
+    cfg = store.get_config()
+    token = (cfg.get("bot_token") or "").strip()
+    if not token:
+        raise TgError("未配置 Bot 推送 token")
+    proxy = (cfg.get("proxy") or "").strip() or None
+    try:
+        async with httpx.AsyncClient(proxy=proxy, timeout=10) as c:
+            r = await c.get(f"https://api.telegram.org/bot{token}/getUpdates", params={"limit": 20})
+    except (httpx.HTTPError, httpx.InvalidURL) as e:
+        raise TgError(f"getUpdates 请求失败：{e}") from e
+    if r.status_code != 200:
+        raise TgError(f"getUpdates 被拒绝（HTTP {r.status_code}），检查 token 是否正确")
+    for u in r.json().get("result", []):
+        msg = u.get("message") or u.get("edited_message") or {}
+        chat = msg.get("chat") or {}
+        frm = msg.get("from") or {}
+        if chat.get("id"):
+            return {
+                "chat_id": chat["id"],
+                "title": chat.get("title") or chat.get("username") or (frm.get("username") or str(frm.get("id", ""))),
+                "type": chat.get("type", ""),
+            }
+    raise TgError("没有取到消息：请先在 Telegram 里给你的 bot 发送任意一条消息，再点「获取 chat_id」")
 
 
 def _resolve_peer(target: str | None) -> Any:

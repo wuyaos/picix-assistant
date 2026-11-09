@@ -49,7 +49,9 @@ class ConfigUpdate(BaseModel):
     tg_api_id: int | None = Field(default=None, ge=0, description="Telegram API id（my.telegram.org）")
     tg_api_hash: str | None = Field(default=None, description="Telegram API hash")
     tg_auto_login: bool | None = Field(default=None, description="登录需确认时自动经 TG 会话发送")
-    notify_target: str | None = Field(default=None, description="推送目标：me=保存的消息；@username=公开频道；纯数字=Telegram ID")
+    notify_target: str | None = Field(default=None, description="推送目标（仅 Bot 通道）：纯数字 chat_id")
+    bot_token: str | None = Field(default=None, description="Bot 推送 token（@BotFather 创建），唯一推送通道")
+    bot_chat_id: int | None = Field(default=None, description="Bot 推送目标 chat_id，0=未设置")
 
 
 
@@ -252,6 +254,16 @@ async def api_run(req: RunRequest | None = None):
         return await sched.run_manual(force=bool(req.force) if req else False)
     except RuntimeError as e:
         raise HTTPException(409, str(e))
+
+
+@app.get("/api/tg/bot/chat_id")
+async def api_tg_bot_chat_id():
+    """从 bot getUpdates 取最近一条消息的 chat_id（用户先给 bot 发条消息）。"""
+    store: Store = app.state.store
+    try:
+        return await tg_service.bot_get_chat_id(store)
+    except tg_service.TgError as e:
+        raise HTTPException(400, str(e))
 
 
 @app.post("/api/notify/test")

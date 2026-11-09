@@ -30,7 +30,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from .mall import ensure_package, reconcile_pending_purchases
-from .tg import TgError, send_login_confirm, send_to_me
+from .tg import TgError, bot_get_chat_id, bot_send, send_login_confirm
 from .picix.client import PicixClient, PicixError
 from .picix.signing import new_proof_key_id
 from .picix.transport import TransportUnknown
@@ -280,9 +280,9 @@ def _shanghai_date() -> str:
 
 
 async def _push(store: Store, text: str) -> bool:
-    """推送到 TG 保存的消息。失败返回 False（不抛，不阻塞流水线结果）。"""
+    """经 Bot 推送（唯一通道）。失败返回 False（不抛，不阻塞流水线结果）。"""
     try:
-        await send_to_me(store, text)
+        await bot_send(store, text)
         return True
     except Exception as e:  # noqa: BLE001 — 推送失败只记日志
         log.warning("推送失败: %s", e)
@@ -354,7 +354,7 @@ def _fmt_summary(detail: dict[str, Any], status: str) -> str:
 
 async def send_notify_test(store: Store) -> dict[str, Any]:
     """测试推送端点：不消耗去重键；异常向上抛（端点返回 400 + 原因）。"""
-    await send_to_me(store, "Picix 助手测试推送：通道正常。")
+    await bot_send(store, "Picix 助手测试推送：通道正常。")
     return {"sent": True}
 
 

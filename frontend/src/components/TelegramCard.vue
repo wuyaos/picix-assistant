@@ -27,8 +27,8 @@ async function load() {
       tg_api_hash: cfg.tg_api_hash || "",
       tg_auto_login: !!cfg.tg_auto_login,
     };
-    notifyTarget.value = cfg.notify_target || "me";
-    if (tg.value.linked) loadPeers();
+    botToken.value = cfg.bot_token || "";
+    botChatId.value = cfg.bot_chat_id || 0;
   } catch (e) {
     error.value = e.message;
   }
@@ -110,33 +110,38 @@ async function submitPassword() {
 }
 
 
-const notifyTarget = ref("me");
-const peers = ref([]);
-const peersLoading = ref(false);
-const targetSaved = ref(false);
-let targetTimer = null;
+const botToken = ref("");
+const botChatId = ref(0);
+const botChatTitle = ref("");
+const botSaved = ref(false);
+const botFetching = ref(false);
+let botTimer = null;
 
-async function loadPeers() {
-  peersLoading.value = true;
+async function saveBot() {
+  botSaved.value = false;
   try {
-    const r = await api("/tg/peers");
-    peers.value = r.peers || [];
-  } catch {
-    /* 拉取失败时下拉静默降级为仅「保存的消息」 */
-  } finally {
-    peersLoading.value = false;
+    const body = { bot_token: botToken.value.trim(), bot_chat_id: Number(botChatId.value) || 0 };
+    await api("/config", { method: "PUT", body });
+    botSaved.value = true;
+    clearTimeout(botTimer);
+    botTimer = setTimeout(() => (botSaved.value = false), 2500);
+  } catch (e) {
+    error.value = e.message;
   }
 }
 
-async function saveTarget() {
-  targetSaved.value = false;
+async function fetchChatId() {
+  botFetching.value = true;
+  error.value = "";
   try {
-    await api("/config", { method: "PUT", body: { notify_target: notifyTarget.value } });
-    targetSaved.value = true;
-    clearTimeout(targetTimer);
-    targetTimer = setTimeout(() => (targetSaved.value = false), 2500);
+    const r = await api("/tg/bot/chat_id");
+    botChatId.value = r.chat_id;
+    botChatTitle.value = r.title ? `（${r.title}）` : "";
+    await saveBot();
   } catch (e) {
     error.value = e.message;
+  } finally {
+    botFetching.value = false;
   }
 }
 const testingNotify = ref(false);
@@ -146,7 +151,7 @@ async function testNotify() {
   try {
     await api("/notify/test", { method: "POST" });
     error.value = "";
-    window.alert("测试推送已发送，请在上方推送目标中查看。");
+    window.alert("测试推送已发送，请在 Bot 推送目标（chat_id 对应的对话）中查看。");
   } catch (e) {
     error.value = e.message;
   } finally {
@@ -190,23 +195,25 @@ onUnmounted(() => clearTimeout(pollTimer));
       <span v-if="tg.auto_enabled" class="badge plain">自动确认已开启</span>
     </div>
 
-    <div v-if="tg.linked" class="row notify-row">
+    <div class="row notify-row">
       <label class="field" style="flex: 1; margin: 0">
-        <span>推送目标（运行结果 / 登录恢复 / 测试推送的接收位置）</span>
+        <span>② Bot 推送（唯一推送通道；在 @BotFather 用 /newbot 创建后粘贴 token）</span>
         <span class="hash-wrap">
-          <select v-model="notifyTarget" :disabled="peersLoading" @change="saveTarget">
-            <option value="me">保存的消息</option>
-            <option v-for="p in peers.filter((x) => x.id !== 'me')" :key="p.id" :value="p.id">
-              {{ p.type }}：{{ p.name }}
-            </option>
-          </select>
-          <button type="button" class="btn small hash-toggle" :disabled="peersLoading" @click="loadPeers">
-            {{ peersLoading ? "加载中…" : "刷新列表" }}
+          <input v-model="botToken" type="password" placeholder="123456789:AAF…" autocomplete="off" style="flex: 1" />
+          <button type="button" class="btn small hash-toggle" :disabled="botFetching" @click="fetchChatId">
+            {{ botFetching ? "获取中…" : "获取 chat_id" }}
           </button>
+          <button type="button" class="btn small primary hash-toggle" @click="saveBot">保存</button>
         </span>
       </label>
-      <span v-if="targetSaved" class="badge ok">已保存</span>
+      <span v-if="botSaved" class="badge ok">已保存</span>
     </div>
+    <p class="muted" style="margin: var(--space-1) 0 0">
+      chat_id: {{ botChatId || "未设置" }}{{ botChatTitle }}
+      <template v-if="!botChatId">
+        —— 先在 Telegram 里给你的 bot 发送任意一条消息，再点「获取 chat_id」自动填入。
+      </template>
+    </p>
     <details class="tg-config-details" :open="!tg.linked">
       <summary>连接参数（api_id / api_hash）</summary>
       <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-top: var(--space-3)">
