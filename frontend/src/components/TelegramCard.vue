@@ -29,6 +29,7 @@ async function load() {
     };
     botToken.value = cfg.bot_token || "";
     botChatId.value = cfg.bot_chat_id || 0;
+    botChatIdManual.value = cfg.bot_chat_id ? String(cfg.bot_chat_id) : "";
   } catch (e) {
     error.value = e.message;
   }
@@ -109,7 +110,7 @@ async function submitPassword() {
   }
 }
 
-
+const botChatIdManual = ref("");
 const botToken = ref("");
 const botChatId = ref(0);
 const botChatTitle = ref("");
@@ -120,7 +121,9 @@ let botTimer = null;
 async function saveBot() {
   botSaved.value = false;
   try {
-    const body = { bot_token: botToken.value.trim(), bot_chat_id: Number(botChatId.value) || 0 };
+    const manual = botChatIdManual.value.trim();
+    const chatId = manual ? Number(manual) : Number(botChatId.value) || 0;
+    const body = { bot_token: botToken.value.trim(), bot_chat_id: chatId };
     await api("/config", { method: "PUT", body });
     botSaved.value = true;
     clearTimeout(botTimer);
@@ -137,6 +140,7 @@ async function fetchChatId() {
     const r = await api("/tg/bot/chat_id");
     botChatId.value = r.chat_id;
     botChatTitle.value = r.title ? `（${r.title}）` : "";
+    botChatIdManual.value = String(r.chat_id);
     await saveBot();
   } catch (e) {
     error.value = e.message;
@@ -200,8 +204,9 @@ onUnmounted(() => clearTimeout(pollTimer));
         <span>② Bot 推送（唯一推送通道；在 @BotFather 用 /newbot 创建后粘贴 token）</span>
         <span class="hash-wrap">
           <input v-model="botToken" type="password" placeholder="123456789:AAF…" autocomplete="off" style="flex: 1" />
+          <input v-model="botChatIdManual" type="text" placeholder="chat_id（可选手动填：私聊=@userinfobot 查数字 ID；群组/频道为 -100 开头）" style="flex: 1.4" />
           <button type="button" class="btn small hash-toggle" :disabled="botFetching" @click="fetchChatId">
-            {{ botFetching ? "获取中…" : "获取 chat_id" }}
+            {{ botFetching ? "获取中…" : "自动获取" }}
           </button>
           <button type="button" class="btn small primary hash-toggle" @click="saveBot">保存</button>
         </span>
@@ -211,7 +216,7 @@ onUnmounted(() => clearTimeout(pollTimer));
     <p class="muted" style="margin: var(--space-1) 0 0">
       chat_id: {{ botChatId || "未设置" }}{{ botChatTitle }}
       <template v-if="!botChatId">
-        —— 先在 Telegram 里给你的 bot 发送任意一条消息，再点「获取 chat_id」自动填入。
+        —— 「自动获取」需先给你的 bot 发条消息；或直接手动填 chat_id。
       </template>
     </p>
     <details class="tg-config-details" :open="!tg.linked">
