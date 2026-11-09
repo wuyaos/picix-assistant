@@ -33,14 +33,14 @@ onMounted(loadStatus);
   </div>
 </template>
 <style scoped>
-.container { max-width: 860px; margin: 0 auto; padding: var(--container-pad-top) var(--container-pad-x) var(--container-pad-bottom); }
-.topbar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); margin: calc(var(--container-pad-top) * -1) calc(var(--container-pad-x) * -1) var(--space-5); padding: var(--space-3) var(--container-pad-x); background: var(--color-surface); border-bottom: 1px solid var(--color-border); }
+.container { max-width: var(--container-max); margin: 0 auto; padding: var(--container-pad-top) var(--container-pad-x) var(--container-pad-bottom); }
+.topbar { position: sticky; top: 0; z-index: 20; display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); margin: calc(var(--container-pad-top) * -1) calc(var(--container-pad-x) * -1) var(--space-5); padding: var(--space-3) var(--container-pad-x); background: var(--color-surface); border-bottom: var(--border-width-thin) solid var(--color-border-subtle); box-shadow: var(--shadow-sm); }
 .brand, .segmented-nav, .section-title, .run-row { display: flex; align-items: center; gap: var(--space-2); }
 .brand h1 { margin: 0; background: linear-gradient(135deg, var(--color-accent), var(--color-accent-strong)); -webkit-background-clip: text; background-clip: text; color: transparent; }
-.logo { width: 24px; height: 24px; }
+.logo { width: var(--size-logo); height: var(--size-logo); }
 .ver { color: var(--color-text-muted); font-size: var(--font-sm); font-weight: var(--weight-regular); }
-.segmented-nav { padding: var(--space-1); background: var(--color-field); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-pill); }
-.tab { padding: var(--space-2) var(--space-4); color: var(--color-text-muted); background: transparent; border: 0; border-radius: var(--radius-pill); cursor: pointer; }
+.segmented-nav { padding: var(--space-1); background: var(--color-field); border: var(--border-width-thin) solid var(--color-border-subtle); border-radius: var(--radius-pill); }
+.tab { appearance: none; padding: var(--space-2) var(--space-4); color: var(--color-text-muted); background: transparent; border: 0; border-radius: var(--radius-pill); cursor: pointer; }
 .tab.active { color: var(--color-text); background: var(--color-surface-raised); box-shadow: var(--shadow-sm); }
 .status-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-4); margin-bottom: var(--space-4); }
 .status-grid > .card { margin-bottom: 0; }
@@ -49,10 +49,10 @@ onMounted(loadStatus);
 .empty, .loading { padding: var(--space-4) 0; color: var(--color-text-muted); text-align: center; }
 .runs-card { margin-top: var(--space-4); }
 .run-list { display: flex; flex-direction: column; gap: var(--space-2); }
-.run-row { gap: var(--space-3); padding: var(--space-2) 0; border-bottom: 1px solid var(--color-border-subtle); }
+.run-row { gap: var(--space-3); padding: var(--space-2) 0; border-bottom: var(--border-width-thin) solid var(--color-border-subtle); }
 .run-row:last-child { border-bottom: 0; }
 .run-summary { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .config-page { display: flex; flex-direction: column; }
-@media (max-width: 720px) { .status-grid { grid-template-columns: 1fr; } }
-@media (max-width: 520px) { .container { padding: var(--space-4) var(--space-3) var(--space-7); } .topbar { margin: calc(var(--space-4) * -1) calc(var(--space-3) * -1) var(--space-4); padding-inline: var(--space-3); flex-wrap: wrap; } .segmented-nav { width: 100%; } .tab { flex: 1; } .run-row { align-items: flex-start; flex-wrap: wrap; } }
+@media (max-width: 45rem) { .status-grid { grid-template-columns: 1fr; } }
+@media (max-width: 32.5rem) { .container { padding: var(--space-4) var(--space-3) var(--space-7); } .topbar { margin: calc(var(--space-4) * -1) calc(var(--space-3) * -1) var(--space-4); padding-inline: var(--space-3); flex-wrap: wrap; } .segmented-nav { width: 100%; } .tab { flex: 1; } .run-row { align-items: flex-start; flex-wrap: wrap; } }
 </style>

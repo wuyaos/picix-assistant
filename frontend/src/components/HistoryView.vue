@@ -57,8 +57,8 @@ defineExpose({ load });
 
 <template>
   <div class="card">
-    <div class="row" style="justify-content: space-between">
-      <h3 style="margin: 0">执行历史</h3>
+    <div class="row history-header">
+      <h3>执行历史</h3>
       <button class="btn ghost small" @click="load">刷新</button>
     </div>
     <div v-if="loading" class="loading">加载中…</div>
@@ -84,9 +84,9 @@ defineExpose({ load });
                 <div v-for="(s, i) in r.detail?.steps || []" :key="'s' + i">→ {{ s }}</div>
                 <div v-for="(u, i) in r.detail?.unlocks || []" :key="'u' + i">
                   {{ u.ok ? "✓" : "✗" }} 解锁 movieId={{ u.movieId }} (listId={{ u.listId }})
-                  <span v-if="u.error" class="alert err" style="display: inline; padding: var(--space-1) var(--space-2)">{{ u.error }}</span>
+                  <span v-if="u.error" class="alert err inline-error">{{ u.error }}</span>
                 </div>
-                <div v-for="(e, i) in r.detail?.errors || []" :key="'e' + i" style="color: var(--color-danger)">⚠ {{ e }}</div>
+                <div v-for="(e, i) in r.detail?.errors || []" :key="'e' + i" class="run-error">⚠ {{ e }}</div>
               </div>
             </details>
           </article>
@@ -118,11 +118,19 @@ defineExpose({ load });
 
 .run-item {
   padding: var(--space-2) 0;
-  border-bottom: 1px solid var(--color-border-subtle);
+  border-bottom: var(--border-width-thin) solid var(--color-border-subtle);
 }
 
 .run-item:last-child {
   border-bottom: 0;
+}
+.history-header { justify-content: space-between; }
+.history-header h3 { margin: 0; }
+.inline-error { display: inline; padding: var(--space-1) var(--space-2); }
+.run-error { color: var(--color-danger); }
+
+@media (max-width: 36rem) {
+  .run-summary { flex-basis: 100%; }
 }
 
 .run-head {

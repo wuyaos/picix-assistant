@@ -89,7 +89,7 @@ onUnmounted(() => clearTimeout(pollTimer));
         <button v-if="loggedIn" class="btn small danger" @click="logout">退出登录</button>
       </div>
       <div v-if="!loggedIn">
-        <p class="muted" style="margin-top: 0">
+        <p class="muted login-intro">
           未登录。点击「开始登录」后，用已注册 Picix 的 Telegram 账号打开生成的链接发送确认消息即可。
         </p>
         <button class="btn primary" :disabled="starting || !!pending" @click="start">
@@ -99,7 +99,7 @@ onUnmounted(() => clearTimeout(pollTimer));
         <template v-if="pending">
           <div class="alert info">
             <div>登录码：<code>{{ pending.code }}</code></div>
-            <div style="margin-top: var(--space-2)">
+            <div class="login-code-help">
               点击下面的链接（或在 Telegram 中打开 @vStreamingBot），发送
               <code>/login {{ pending.code }}</code>：
             </div>
@@ -107,7 +107,7 @@ onUnmounted(() => clearTimeout(pollTimer));
               :href="pending.tg_url"
               target="_blank"
               rel="noopener"
-              style="color: var(--color-accent-strong); word-break: break-all"
+              class="inline-link login-link"
               >{{ pending.tg_url }}</a
             >
           </div>
@@ -125,4 +125,8 @@ onUnmounted(() => clearTimeout(pollTimer));
 .login-status-row {
   margin-bottom: var(--space-3);
 }
+.login-intro { margin-top: 0; }
+.login-code-help { margin-top: var(--space-2); }
+.inline-link { color: var(--color-accent-strong); }
+.login-link { word-break: break-all; }
 </style>

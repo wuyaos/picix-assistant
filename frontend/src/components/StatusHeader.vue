@@ -58,5 +58,5 @@ async function runNow(force = false) {
 .points { display: inline-flex; align-items: baseline; gap: var(--space-1); color: var(--color-accent-strong); }
 .points b { font-size: var(--font-xxl); }
 .points small { color: var(--color-text-muted); }
-@media (max-width: 720px) { .status-header-main, .status-login { align-items: flex-start; flex-direction: column; } .status-actions { justify-content: flex-start; } }
+@media (max-width: 45rem) { .status-header-main, .status-login { align-items: flex-start; flex-direction: column; } .status-actions { justify-content: flex-start; } }
 </style>

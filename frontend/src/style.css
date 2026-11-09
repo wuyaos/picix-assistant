@@ -108,6 +108,21 @@
   --container-pad-top: 1.5rem;
   --container-pad-x: 1.125rem;
   --container-pad-bottom: 3rem;
+  --container-max: 54rem;
+  --size-logo: 1.5rem;
+  --size-qr: 11.875rem;
+  --size-table-min: 30rem;
+  --size-table-min-compact: 28.75rem;
+  --size-field-max: 26.25rem;
+  --size-dropdown-min: 18.75rem;
+  --size-badge-min: 1.5rem;
+  --size-page-min: 20rem;
+  --size-grid-min: 12.5rem;
+  --size-list-min: 13.75rem;
+  --size-dropdown-max: 18.75rem;
+  --size-copy-max: 52rem;
+  --border-width-thin: 0.0625rem;
+  --press-offset: 0.0625rem;
   --space-7: 2rem;
   --space-8: 2.5rem;
 
@@ -144,7 +159,7 @@
 }
 
 html {
-  min-width: 320px;
+  min-width: var(--size-page-min);
 }
 
 body {
@@ -218,7 +233,7 @@ p {
   margin-bottom: var(--space-4);
   padding: var(--space-5);
   background: var(--color-surface);
-  border: 1px solid var(--color-border-subtle);
+  border: var(--border-width-thin) solid var(--color-border-subtle);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-sm);
 }
@@ -259,7 +274,7 @@ p {
   font-weight: var(--weight-medium);
   line-height: var(--leading-tight);
   background: var(--color-surface-raised);
-  border: 1px solid var(--color-border);
+  border: var(--border-width-thin) solid var(--color-border);
   border-radius: var(--radius-md);
   cursor: pointer;
   transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
@@ -272,7 +287,7 @@ p {
 }
 
 .btn:active:not(:disabled) {
-  transform: translateY(1px);
+  transform: translateY(var(--press-offset));
 }
 
 .btn:focus-visible,
@@ -336,7 +351,7 @@ p {
 .badge {
   display: inline-flex;
   align-items: center;
-  min-height: 24px;
+  min-height: var(--size-badge-min);
   padding: var(--space-1) var(--space-3);
   color: var(--color-text-secondary);
   font-size: var(--font-sm);
@@ -344,7 +359,7 @@ p {
   line-height: var(--leading-tight);
   white-space: nowrap;
   background: var(--color-surface-raised);
-  border: 1px solid var(--color-border);
+  border: var(--border-width-thin) solid var(--color-border);
   border-radius: var(--radius-pill);
 }
 
@@ -403,7 +418,7 @@ select {
   font-weight: var(--weight-regular);
   line-height: var(--leading-normal);
   background: var(--color-field);
-  border: 1px solid var(--color-border);
+  border: var(--border-width-thin) solid var(--color-border);
   border-radius: var(--radius-md);
   transition: border-color 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease;
 }
@@ -434,7 +449,7 @@ select:disabled {
   color: var(--color-text-secondary);
   font-size: var(--font-md);
   line-height: var(--leading-normal);
-  border: 1px solid;
+  border: var(--border-width-thin) solid;
   border-radius: var(--radius-md);
 }
 
@@ -479,7 +494,7 @@ td {
   padding: var(--space-3);
   text-align: left;
   line-height: var(--leading-normal);
-  border-bottom: 1px solid var(--color-border-subtle);
+  border-bottom: var(--border-width-thin) solid var(--color-border-subtle);
 }
 
 tbody tr {
@@ -570,7 +585,7 @@ label.field > span {
 }
 
 .table-scroll table {
-  min-width: 480px;
+  min-width: var(--size-table-min);
 }
 
 details > summary {
@@ -596,7 +611,7 @@ details[open] > summary {
   text-align: center;
 }
 
-@media (max-width: 520px) {
+@media (max-width: 32.5rem) {
   .card {
     padding: var(--space-4);
   }
@@ -611,7 +626,7 @@ details[open] > summary {
   }
 }
 
-@media (max-width: 360px) {
+@media (max-width: 22.5rem) {
   .card {
     padding: var(--space-3);
   }
@@ -622,7 +637,7 @@ details[open] > summary {
   }
 
   .table-scroll table {
-    min-width: 460px;
+    min-width: var(--size-table-min-compact);
   }
 }
 
@@ -644,7 +659,7 @@ details[open] > summary {
   align-items: flex-start;
 }
 
-@media (max-width: 520px) {
+@media (max-width: 32.5rem) {
   .card .table-scroll {
     margin-right: calc(var(--space-4) * -1);
     margin-left: calc(var(--space-4) * -1);
@@ -653,7 +668,7 @@ details[open] > summary {
   }
 }
 
-@media (max-width: 360px) {
+@media (max-width: 22.5rem) {
   .card .table-scroll {
     margin-right: calc(var(--space-3) * -1);
     margin-left: calc(var(--space-3) * -1);

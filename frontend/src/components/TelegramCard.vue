@@ -184,10 +184,10 @@ onUnmounted(() => clearTimeout(pollTimer));
 <template>
   <div class="card">
     <h3>① Telegram 连接</h3>
-    <p class="muted" style="margin-top: 0">
+    <p class="muted tg-intro">
       连接后 Picix 登录可全自动完成（向 @vStreamingBot 发送确认消息）。
       api_id / api_hash 在
-      <a href="https://my.telegram.org" target="_blank" rel="noopener" style="color: var(--color-accent-strong)">my.telegram.org</a>
+      <a class="inline-link" href="https://my.telegram.org" target="_blank" rel="noopener">my.telegram.org</a>
       → API development tools 一次性免费申请。
     </p>
 
@@ -200,11 +200,11 @@ onUnmounted(() => clearTimeout(pollTimer));
     </div>
 
     <div class="row notify-row">
-      <label class="field" style="flex: 1; margin: 0">
+      <label class="field notify-label">
         <span>② Bot 推送（唯一推送通道；在 @BotFather 用 /newbot 创建后粘贴 token）</span>
         <span class="hash-wrap">
-          <input v-model="botToken" type="password" placeholder="123456789:AAF…" autocomplete="off" style="flex: 1" />
-          <input v-model="botChatIdManual" type="text" placeholder="chat_id（可选手动填：私聊=@userinfobot 查数字 ID；群组/频道为 -100 开头）" style="flex: 1.4" />
+          <input class="bot-token" v-model="botToken" type="password" placeholder="123456789:AAF…" autocomplete="off" />
+          <input class="bot-chat-id" v-model="botChatIdManual" type="text" placeholder="chat_id（可选手动填：私聊=@userinfobot 查数字 ID；群组/频道为 -100 开头）" />
           <button type="button" class="btn small hash-toggle" :disabled="botFetching" @click="fetchChatId">
             {{ botFetching ? "获取中…" : "自动获取" }}
           </button>
@@ -213,7 +213,7 @@ onUnmounted(() => clearTimeout(pollTimer));
       </label>
       <span v-if="botSaved" class="badge ok">已保存</span>
     </div>
-    <p class="muted" style="margin: var(--space-1) 0 0">
+    <p class="muted tg-chat-help">
       chat_id: {{ botChatId || "未设置" }}{{ botChatTitle }}
       <template v-if="!botChatId">
         —— 「自动获取」需先给你的 bot 发条消息；或直接手动填 chat_id。
@@ -221,7 +221,7 @@ onUnmounted(() => clearTimeout(pollTimer));
     </p>
     <details class="tg-config-details" :open="!tg.linked">
       <summary>连接参数（api_id / api_hash）</summary>
-      <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-top: var(--space-3)">
+      <div class="grid tg-fields">
         <label class="field">
           <span>api_id</span>
           <input v-model="form.tg_api_id" type="number" placeholder="1234567" />
@@ -236,11 +236,11 @@ onUnmounted(() => clearTimeout(pollTimer));
           </span>
         </label>
       </div>
-      <label style="display: flex; gap: var(--space-2); align-items: center; margin-top: var(--space-3); margin-bottom: var(--space-1)">
-        <input v-model="form.tg_auto_login" type="checkbox" style="width: auto" />
+      <label class="tg-auto-login">
+        <input v-model="form.tg_auto_login" type="checkbox" />
         <span>自动确认：Picix 登录时自动发送 TG 消息（需已连接）</span>
       </label>
-      <p class="muted" style="margin-top: 0">
+      <p class="muted tg-note">
         注意：开启后请勿与浏览器同时登录使用站点（会互顶会话）。
       </p>
     </details>
@@ -260,11 +260,11 @@ onUnmounted(() => clearTimeout(pollTimer));
       </div>
     </div>
 
-    <div v-if="qr && qr.status === 'waiting' && qrDataUri" style="margin-top: var(--space-3); text-align: center">
+    <div v-if="qr && qr.status === 'waiting' && qrDataUri" class="qr-wrap">
       <img
         :src="qrDataUri"
         alt="Telegram 登录二维码"
-        style="width: 190px; height: 190px; background: var(--color-qr-background); border-radius: var(--radius-md); padding: var(--space-2)"
+        class="qr-image"
       />
       <p class="muted">用 Telegram App「设置 → 设备 → 链接桌面设备」扫描；二维码约每 30 秒自动轮换</p>
     </div>
@@ -307,5 +307,25 @@ onUnmounted(() => clearTimeout(pollTimer));
 .hash-toggle {
   flex-shrink: 0;
   white-space: nowrap;
+}
+.tg-intro { margin-top: 0; max-width: var(--size-copy-max); }
+.inline-link { color: var(--color-accent-strong); }
+.notify-label { flex: 1; min-width: 0; margin: 0; }
+.bot-token { flex: 1; }
+.bot-chat-id { flex: 1.4; }
+.tg-chat-help { margin: var(--space-1) 0 0; }
+.tg-fields { grid-template-columns: repeat(auto-fit, minmax(var(--size-grid-min), 1fr)); margin-top: var(--space-3); }
+.tg-auto-login { display: flex; gap: var(--space-2); align-items: center; margin: var(--space-3) 0 var(--space-1); }
+.tg-auto-login input { width: auto; }
+.tg-note { margin-top: 0; }
+.qr-wrap { margin-top: var(--space-3); text-align: center; }
+.qr-image { width: var(--size-qr); height: var(--size-qr); padding: var(--space-2); background: var(--color-qr-background); border-radius: var(--radius-md); }
+
+@media (max-width: 36rem) {
+  .notify-label { flex-basis: 100%; }
+  .hash-wrap { flex-wrap: wrap; }
+  .bot-token,
+  .bot-chat-id { flex: 1 1 100%; }
+  .notify-row > .badge { margin-top: calc(var(--space-1) * -1); }
 }
 </style>

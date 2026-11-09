@@ -39,11 +39,11 @@ watch(() => props.status?.logged_in, (v) => { if (v) load(); });
 .section-title, .package-head, .package-meta { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
 .section-title { flex-wrap: wrap; }
 .traffic-badges { display: flex; flex: 1; flex-wrap: wrap; gap: var(--space-1); justify-content: flex-end; }
-.traffic-badges .badge { min-height: 1.5rem; padding: 0.2rem 0.5rem; font-size: var(--font-xs); }
+.traffic-badges .badge { min-height: 1.5rem; padding: var(--space-1) var(--space-2); font-size: var(--font-xs); }
 .package-list { display: flex; flex-direction: column; gap: var(--space-3); }
-.package-item { padding: var(--space-3); background: var(--color-surface-raised); border: 1px solid var(--color-border-subtle); border-radius: var(--radius-md); }
+.package-item { padding: var(--space-3); background: var(--color-surface-raised); border: var(--border-width-thin) solid var(--color-border-subtle); border-radius: var(--radius-md); }
 .package-meta { margin: var(--space-2) 0; font-size: var(--font-sm); }
 .package-item .progress > div.warning { background: var(--color-warning); }
-.purchase-details { margin-top: var(--space-3); border-top: 1px solid var(--color-border-subtle); padding-top: var(--space-3); }
+.purchase-details { margin-top: var(--space-3); border-top: var(--border-width-thin) solid var(--color-border-subtle); padding-top: var(--space-3); }
 .purchase-row { display: grid; grid-template-columns: 1fr auto 1fr; gap: var(--space-2); align-items: center; padding-top: var(--space-2); font-size: var(--font-sm); }
 </style>
