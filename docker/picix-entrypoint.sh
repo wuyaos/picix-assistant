@@ -55,15 +55,19 @@ last = None
 plan = urls * 2
 for attempt, url in enumerate(plan, 1):
     try:
-        print(f"[entrypoint] 下载（{attempt}/{len(plan)}）: {url}")
+        print(f"[entrypoint] 下载（{attempt}/{len(plan)}）: {url}", flush=True)
         with urllib.request.urlopen(url, timeout=120) as resp, open(tmp, "wb") as f:
             total = 0
+            milestone = 0
             while True:
                 chunk = resp.read(1 << 20)
                 if not chunk:
                     break
                 f.write(chunk)
                 total += len(chunk)
+                if total - milestone >= 32 << 20:
+                    milestone = total
+                    print(f"[entrypoint]   已下载 {total >> 20} MB…", flush=True)
         if total < 50 * 1024 * 1024:
             raise RuntimeError(f"下载不完整（{total} 字节）")
         with tarfile.open(tmp, "r:gz") as tf:
