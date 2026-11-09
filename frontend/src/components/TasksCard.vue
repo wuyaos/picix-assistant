@@ -12,6 +12,21 @@ function prog(t) {
   const cur = p.progress ?? t.progress ?? 0; const tgt = p.target ?? t.target ?? 0;
   return { cur, tgt, done: p.status === "COMPLETED" || !!p.finishedAt, pct: tgt > 0 ? Math.min(100, (cur / tgt) * 100) : 0, active: p.status === "ACTIVE" };
 }
+function rel(ts) {
+  const d = ts - Math.floor(Date.now() / 1000);
+  const a = Math.abs(d);
+  const f = (n, u) => (d >= 0 ? `${n} ${u}后` : `${n} ${u}前`);
+  if (a < 3600) return f(Math.max(1, Math.round(a / 60)), "分钟");
+  if (a < 86400) return f(Math.round(a / 3600), "小时");
+  return f(Math.round(a / 86400), "天");
+}
+function hint(t) {
+  if (prog(t).done) return t.finishedAt ? `完成于 ${rel(t.finishedAt)}` : "";
+  let dl = t.cycleEndAt;
+  if (!dl && t.periodType !== "DAILY") dl = props.status?.minimum_consumption?.nextSettlementAt || 0;
+  if (!dl && t.periodType === "DAILY") { const e = new Date(); e.setHours(24, 0, 0, 0); dl = Math.floor(e.getTime() / 1000); }
+  return dl ? `截止于 ${rel(dl)}` : "";
+}
 onMounted(async () => { try { acceptCodes.value = (await api("/config")).accept_task_codes || []; } catch (e) { error.value = e.message; } finally { loading.value = false; } });
 </script>
 <template>
@@ -25,6 +40,7 @@ onMounted(async () => { try { acceptCodes.value = (await api("/config")).accept_
       <div v-for="t in tasks" :key="t.code" class="task-item">
         <div class="task-head"><span class="task-name">{{ t.name || t.code }}</span><span class="muted task-num">{{ prog(t).cur }} / {{ prog(t).tgt }}</span><span class="badge" :class="prog(t).done ? 'ok' : prog(t).active ? 'warn' : 'muted'">{{ prog(t).done ? "已完成" : prog(t).active ? "进行中" : "已过期" }}</span></div>
         <div class="progress"><div :style="{ width: prog(t).pct + '%' }"></div></div>
+        <div v-if="hint(t)" class="task-hint muted">{{ hint(t) }}</div>
       </div>
     </div>
   </section>
@@ -36,4 +52,5 @@ onMounted(async () => { try { acceptCodes.value = (await api("/config")).accept_
 .task-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: var(--weight-semibold); }
 .task-num { margin-left: auto; white-space: nowrap; }
 .task-item .progress { margin-top: var(--space-2); }
+.task-hint { margin-top: var(--space-1); font-size: var(--font-sm); }
 </style>

@@ -596,6 +596,8 @@ async def _pipeline(
                 "code": t.get("code"),
                 "name": t.get("name"),
                 "periodType": t.get("periodType"),
+                "cycleEndAt": t.get("cycleEndAt"),
+                "acceptStartAt": t.get("acceptStartAt"),
                 "target": t.get("target"),
                 "rewardPoints": t.get("rewardPoints"),
                 "progress": (t.get("progress") or {}).get("progress"),

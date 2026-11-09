@@ -306,7 +306,16 @@ async def send_to_me(store: Store, text: str, target: str | None = None) -> dict
             store.delete("tg_session")
             raise TgError("Telegram 会话已失效，请在配置页重新扫码连接")
         me = await client.get_me()
-        dest = me if peer == "me" else await client.get_entity(peer)
+        if peer == "me":
+            dest = me
+        else:
+            # 数字 ID 不在会话缓存时 get_entity 会炸：先经 dialogs 预热实体缓存
+            try:
+                dest = await client.get_entity(peer)
+            except ValueError:
+                async for _ in client.iter_dialogs(limit=200):
+                    pass
+                dest = await client.get_entity(peer)
         await client.send_message(dest, text)
         log.info("已发送推送到 %s（%d 字）", peer, len(text))
         return {"sent": True}
