@@ -43,4 +43,4 @@ COPY --from=fe /fe/dist /app/static
 ENTRYPOINT ["/usr/local/bin/picix-entrypoint.sh"]
 
 VOLUME /data
-EXPOSE 8000
+
