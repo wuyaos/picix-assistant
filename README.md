@@ -20,8 +20,8 @@ Picix（jav.picix.us）每日任务自动化助手：独立 Docker 应用，Web 
 
 - Chromium 二进制**不打进镜像**：首次启动由 `docker/picix-entrypoint.sh` 就绪到命名卷
   `cloakbrowser_cache`（映射 `/opt/cloakbrowser`），升级/重建镜像不重新下载。就绪策略三级：
-  卷缓存命中 → 种子包解包 → 在线下载回退（`CLOAKBROWSER_DOWNLOAD_URL` 主源 + GitHub Releases
-  自动回退，国内可把主源配成镜像地址）。
+  卷缓存命中 → 种子包解包 → 在线下载回退（`CB_DOWNLOAD_URL` 单一指定源，缺省按镜像链
+  `CB_MIRROR_PREFIXES` 依次尝试，GitHub Releases 兜底）。
 - 种子包默认**不挂载**（compose 保持干净）。仅离线首次部署时临时加一行挂载：
 
   ```yaml
@@ -59,9 +59,7 @@ docker pull ghcr.io/wuyaos/picix-assistant:1.1.1
 PICIX_IMAGE=ghcr.io/wuyaos/picix-assistant:1.1.1 docker compose up -d --no-build
 ```
 
-首次启动会自动解包/下载 Chromium 到卷（约 1-2 分钟），之后秒级。数据在 `./data`，升级仅换镜像 tag。
-首次启动自动就绪 Chromium：卷内缓存 → 种子包 `/tmp/cb.tar.gz` → GitHub Releases 直下免费包（约 217MB，无需 license；代理自动复用 `HTTPS_PROXY`，缺省用 `PICIX_PROXY`）。之后秒级启动。数据在 `./data`，升级仅换镜像 tag。
-
+首次启动自动就绪 Chromium（约 1-2 分钟，之后秒级）：卷内缓存 → 种子包 `/tmp/cb.tar.gz` → 在线下载（GitHub Releases 直下免费包约 217MB，无需 license；代理自动复用 `HTTPS_PROXY`，缺省用 `PICIX_PROXY`）。数据在 `./data`，升级仅换镜像 tag。
 镜像约 0.67GB（Chromium 已移到持久卷，不再打进镜像）：`frontend` 多阶段构建（node:22-alpine → python:3.12-slim）；apt 层已清 lists。体积构成：Python 依赖 ~208MB、apt 运行库 ~350MB、基础镜像 ~80MB。Chromium 存于命名卷 `cloakbrowser_cache`（`docker volume ls` 可见），升级镜像/`up -d` 不会重新下载；仅当卷被删且无种子包时才走在线下载——默认按 GitHub → ghfast.top → ghproxy.net → gh.llkk.cc 顺序各试两轮（`CB_MIRROR_PREFIXES` 逗号分隔自定义镜像前缀，`CB_DOWNLOAD_URL` 只试单一指定地址）。
 
 ## 环境变量
@@ -84,7 +82,7 @@ CloakBrowser 层：
 | `CLOAKBROWSER_CACHE_DIR` | `/opt/cloakbrowser` | 二进制缓存卷（`cloakbrowser_cache`），必挂 |
 | `CB_SEED_VERSION` | `146.0.7680.177.5`（entrypoint 内置） | 种子版本号，决定卷内 `chromium-<版本>-pro` 子目录名；升级时同步改 |
 | `CLOAKBROWSER_BINARY_PATH` | 未设（entrypoint 运行时自动填充） | 指定后跳过全部缓存/下载解析，回滚旧版本用 |
-| `CLOAKBROWSER_DOWNLOAD_URL` | `cloakbrowser.dev` | 在线下载主源（失败自动回退 GitHub Releases）；国内可配镜像地址 |
+| `CB_DOWNLOAD_URL` | 未设（`cloakbrowser.dev`） | 指定后只试该单一下载地址；不设则走镜像链 + GitHub Releases 兜底 |
 | `PICIX_PROXY` | 未设 | **站点运行时代理**（优先于配置页；设了则 UI 修改不生效，清掉注释即回到 UI 管理）。只影响 Picix 流量，TG 不走它 |
 
 

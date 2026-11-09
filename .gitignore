@@ -22,3 +22,9 @@ docker/cloakbrowser-*.tar.gz
 __pycache__/
 *.pyc
 .agents/
+
+# Pi 会话与本地笔记
+.pi/
+
+# 本地数据备份（含会话 token，严禁入库）
+docker/*.tgz
