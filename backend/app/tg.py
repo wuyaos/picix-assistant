@@ -281,9 +281,21 @@ async def send_login_confirm(store: Store, code: str) -> dict[str, Any]:
 
 
 
-async def send_to_me(store: Store, text: str) -> dict[str, Any]:
-    """发消息到「保存的消息」（自己），用作运行结果推送通道。"""
+def _resolve_peer(target: str | None) -> Any:
+    """推送目标解析：空/me=保存的消息；纯数字=Telegram 数字 ID；其余按 @username 处理。"""
+    if not target or target.strip() in ("", "me"):
+        return "me"
+    target = target.strip()
+    if target.lstrip("-").isdigit():
+        return int(target)
+    return target
+
+
+async def send_to_me(store: Store, text: str, target: str | None = None) -> dict[str, Any]:
+    """发消息到推送目标（默认保存的消息，可配置频道/群组/用户）。"""
     cfg = store.get_config()
+    target = target if target is not None else cfg.get("notify_target")
+    peer = _resolve_peer(target)
     session_str = _get_session_str(store)
     if not session_str:
         raise TgError("未连接 Telegram 会话（先在配置页扫码连接）")
@@ -294,9 +306,38 @@ async def send_to_me(store: Store, text: str) -> dict[str, Any]:
             store.delete("tg_session")
             raise TgError("Telegram 会话已失效，请在配置页重新扫码连接")
         me = await client.get_me()
-        await client.send_message(me, text)
-        log.info("已发送推送到保存的消息（%d 字）", len(text))
+        dest = me if peer == "me" else await client.get_entity(peer)
+        await client.send_message(dest, text)
+        log.info("已发送推送到 %s（%d 字）", peer, len(text))
         return {"sent": True}
+    finally:
+        with contextlib.suppress(Exception):
+            await client.disconnect()
+
+
+async def list_peers(store: Store) -> dict[str, Any]:
+    """枚举当前会话可发消息的对话（保存的消息/频道/群组/用户），供推送目标下拉。"""
+    cfg = store.get_config()
+    session_str = _get_session_str(store)
+    if not session_str:
+        raise TgError("未连接 Telegram 会话（先在配置页扫码连接）")
+    client = _make_client(cfg, session_str)
+    await client.connect()
+    try:
+        if not await client.is_user_authorized():
+            raise TgError("Telegram 会话已失效，请在配置页重新扫码连接")
+        peers: list[dict[str, Any]] = [{"id": "me", "name": "保存的消息", "type": "保存的消息"}]
+        async for d in client.iter_dialogs(limit=200):
+            entity = d.entity
+            name = getattr(d, "name", "") or getattr(d, "title", "") or str(d.id)
+            if getattr(entity, "broadcast", False):
+                kind = "频道"
+            elif getattr(entity, "megagroup", False) or getattr(entity, "gigagroup", False) or getattr(entity, "forum", False):
+                kind = "群组"
+            else:
+                kind = "用户"
+            peers.append({"id": str(d.id), "name": name, "type": kind})
+        return {"peers": peers}
     finally:
         with contextlib.suppress(Exception):
             await client.disconnect()

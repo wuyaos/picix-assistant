@@ -49,6 +49,8 @@ class ConfigUpdate(BaseModel):
     tg_api_id: int | None = Field(default=None, ge=0, description="Telegram API id（my.telegram.org）")
     tg_api_hash: str | None = Field(default=None, description="Telegram API hash")
     tg_auto_login: bool | None = Field(default=None, description="登录需确认时自动经 TG 会话发送")
+    notify_target: str | None = Field(default=None, description="推送目标：me=保存的消息；@username=公开频道；纯数字=Telegram ID")
+
 
 
 @asynccontextmanager
@@ -133,6 +135,13 @@ async def api_logout():
 async def api_tg_status():
     return await tg_service.status(app.state.store)
 
+
+@app.get("/api/tg/peers")
+async def api_tg_peers():
+    try:
+        return await tg_service.list_peers(app.state.store)
+    except tg_service.TgError as e:
+        raise HTTPException(400, str(e))
 
 @app.post("/api/tg/qr/start")
 async def api_tg_qr_start():

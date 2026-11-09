@@ -4,4 +4,4 @@
 语义化版本：MAJOR.MINOR.PATCH（MINOR=功能/界面迭代，PATCH=修复）。
 """
 
-APP_VERSION = "1.0.4"
+APP_VERSION = "1.0.5"

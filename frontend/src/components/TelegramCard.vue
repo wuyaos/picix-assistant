@@ -27,6 +27,8 @@ async function load() {
       tg_api_hash: cfg.tg_api_hash || "",
       tg_auto_login: !!cfg.tg_auto_login,
     };
+    notifyTarget.value = cfg.notify_target || "me";
+    if (tg.value.linked) loadPeers();
   } catch (e) {
     error.value = e.message;
   }
@@ -108,6 +110,35 @@ async function submitPassword() {
 }
 
 
+const notifyTarget = ref("me");
+const peers = ref([]);
+const peersLoading = ref(false);
+const targetSaved = ref(false);
+let targetTimer = null;
+
+async function loadPeers() {
+  peersLoading.value = true;
+  try {
+    const r = await api("/tg/peers");
+    peers.value = r.peers || [];
+  } catch {
+    /* 拉取失败时下拉静默降级为仅「保存的消息」 */
+  } finally {
+    peersLoading.value = false;
+  }
+}
+
+async function saveTarget() {
+  targetSaved.value = false;
+  try {
+    await api("/config", { method: "PUT", body: { notify_target: notifyTarget.value } });
+    targetSaved.value = true;
+    clearTimeout(targetTimer);
+    targetTimer = setTimeout(() => (targetSaved.value = false), 2500);
+  } catch (e) {
+    error.value = e.message;
+  }
+}
 const testingNotify = ref(false);
 async function testNotify() {
   testingNotify.value = true;
@@ -115,7 +146,7 @@ async function testNotify() {
   try {
     await api("/notify/test", { method: "POST" });
     error.value = "";
-    window.alert("测试推送已发送，请在 Telegram 保存的消息中查看。");
+    window.alert("测试推送已发送，请在上方推送目标中查看。");
   } catch (e) {
     error.value = e.message;
   } finally {
@@ -159,6 +190,23 @@ onUnmounted(() => clearTimeout(pollTimer));
       <span v-if="tg.auto_enabled" class="badge plain">自动确认已开启</span>
     </div>
 
+    <div v-if="tg.linked" class="row notify-row">
+      <label class="field" style="flex: 1; margin: 0">
+        <span>推送目标（运行结果 / 登录恢复 / 测试推送的接收位置）</span>
+        <span class="hash-wrap">
+          <select v-model="notifyTarget" :disabled="peersLoading" @change="saveTarget">
+            <option value="me">保存的消息</option>
+            <option v-for="p in peers.filter((x) => x.id !== 'me')" :key="p.id" :value="p.id">
+              {{ p.type }}：{{ p.name }}
+            </option>
+          </select>
+          <button type="button" class="btn small hash-toggle" :disabled="peersLoading" @click="loadPeers">
+            {{ peersLoading ? "加载中…" : "刷新列表" }}
+          </button>
+        </span>
+      </label>
+      <span v-if="targetSaved" class="badge ok">已保存</span>
+    </div>
     <details class="tg-config-details" :open="!tg.linked">
       <summary>连接参数（api_id / api_hash）</summary>
       <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); margin-top: var(--space-3)">
