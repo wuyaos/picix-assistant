@@ -5,7 +5,7 @@ services:
       args:
         HTTP_PROXY: ${HTTP_PROXY}
         HTTPS_PROXY: ${HTTPS_PROXY}
-    image: ${PICIX_IMAGE:-picix-assistant:latest}   # 远程部署: PICIX_IMAGE=ghcr.io/wuyaos/picix-assistant:3.3.1 docker compose up -d --no-build
+    image: ${PICIX_IMAGE:-picix-assistant:latest}   # 远程部署: PICIX_IMAGE=ghcr.io/wuyaos/picix-assistant:1.0.0 docker compose up -d --no-build
     container_name: picix-assistant
     ports:
       - "8000:8000"        # 宿主:容器；改启动端口时右侧需与 environment.PORT 一致
