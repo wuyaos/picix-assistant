@@ -55,8 +55,8 @@ wsl -u root -e sh -c "sh /mnt/d/work/project/person/picix-assistant/docker/deplo
 ```bash
 # compose 已参数化镜像名，docker/login 后：
 echo "$GITHUB_PAT" | docker login ghcr.io -u wuyaos --password-stdin   # 私有包需要；包转公开可跳过
-docker pull ghcr.io/wuyaos/picix-assistant:1.1.1
-PICIX_IMAGE=ghcr.io/wuyaos/picix-assistant:1.1.1 docker compose up -d --no-build
+docker pull ghcr.io/wuyaos/picix-assistant:1.2.0
+PICIX_IMAGE=ghcr.io/wuyaos/picix-assistant:1.2.0 docker compose up -d --no-build
 ```
 
 首次启动自动就绪 Chromium（约 1-2 分钟，之后秒级）：卷内缓存 → 种子包 `/tmp/cb.tar.gz` → 在线下载（GitHub Releases 直下免费包约 217MB，无需 license；代理自动复用 `HTTPS_PROXY`，缺省用 `PICIX_PROXY`）。数据在 `./data`，升级仅换镜像 tag。
@@ -90,7 +90,7 @@ CloakBrowser 层：
 
 ## 版本
 
-单一来源：`backend/app/version.py` 的 `APP_VERSION`。改完重建部署，顶栏品牌旁与 `/api/status.version` 自动带出。语义化版本：MINOR=功能/界面迭代，PATCH=修复。当前 `v1.1.1`。
+单一来源：`backend/app/version.py` 的 `APP_VERSION`。改完重建部署，顶栏品牌旁与 `/api/status.version` 自动带出。语义化版本：MINOR=功能/界面迭代，PATCH=修复。当前 `v1.2.0`。
 
 ## 快速开始
 
