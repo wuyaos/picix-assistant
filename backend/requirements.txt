@@ -1,0 +1,10 @@
+fastapi>=0.115
+uvicorn>=0.32
+apscheduler>=3.10
+httpx[socks]>=0.27
+cryptography>=43
+cloakbrowser>=0.7
+playwright>=1.49
+telethon>=1.36
+python-socks[asyncio]>=2.0,<4
+qrcode>=7.4

@@ -1,0 +1,22 @@
+services:
+  picix-assistant:
+    build:
+      context: .
+      args:
+        HTTP_PROXY: ${HTTP_PROXY}
+        HTTPS_PROXY: ${HTTPS_PROXY}
+    image: ${PICIX_IMAGE:-picix-assistant:latest}   # 远程部署: PICIX_IMAGE=ghcr.io/wuyaos/picix-assistant:3.3.1 docker compose up -d --no-build
+    container_name: picix-assistant
+    ports:
+      - "8000:8000"        # 宿主:容器；改启动端口时右侧需与 environment.PORT 一致
+    environment:
+      - TZ=Asia/Shanghai
+      - PORT=8000          # 启动端口（uvicorn 监听），改它要同步 ports 右侧
+      - PICIX_PROXY=http://192.168.123.1:7890   # 站点代理（优先于配置页；清空注释即回到 UI 管理）
+    volumes:
+      - ./data:/data
+      - cloakbrowser_cache:/opt/cloakbrowser
+    restart: unless-stopped
+
+volumes:
+  cloakbrowser_cache:

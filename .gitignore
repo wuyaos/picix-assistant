@@ -1,0 +1,24 @@
+# 运行时数据（含会话 token，严禁入库）
+data/
+backend/data/
+
+# 本机配置
+.env
+
+# 本地虚拟环境
+.venv/
+
+# 前端构建产物与依赖
+frontend/node_modules/
+frontend/dist/
+
+# Chromium 种子包（217MB，按 README 下载）
+docker/cloakbrowser-*.tar.gz
+
+# 测试产物截图（脚本保留）
+.smoke/*.png
+
+# Python
+__pycache__/
+*.pyc
+.agents/
