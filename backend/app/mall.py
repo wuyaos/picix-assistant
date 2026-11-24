@@ -1,17 +1,17 @@
 """商城固定购买与资源包检查。
 
-设计（用户确认的简化版）：
+规则（用户确认的简化版）：
 - 触发条件一条：可用资源包剩余次数 < 本轮计划解锁数 → 购买固定商品
   （只判「有没有包」不够：剩 1 次而本轮解锁 2 部时，第 2 部会被站点按积分扣费）
-- 幂等：clientRequestId 先入库（purchases 表）再请求 payGood；
-  超时/未知结果标记 unknown（「已受理但响应丢失」）。
-  注意：不存在同键重试路径，真正的兜底是下一轮 ensure_package
-  发现可用资源包则不再购买；unknown 记录由
-  reconcile_pending_purchases() 用订单列表对账收敛。
+- 买没买成以站点资源包列表为准：支付请求一轮内只发一次（传输层对非 GET 不重放），
+  超时/异常记 unknown 终态——不重试、不对账、不阻塞下一轮。下一轮 ensure_package
+  以站点资源包列表为准：看到新包就不买，没看到才再买（同一轮内不会重复发起支付）。
+- purchases 表只留痕（幂等键 clientRequestId、订单号、失败原因），不参与购买决策。
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import secrets
 import time
@@ -22,6 +22,9 @@ from .picix.client import PicixClient, PicixError
 from .store import Store
 
 log = logging.getLogger("picix.mall")
+
+# 购买临界区：流水线自动补包与手动 /api/mall/buy 共用，保证「查包 → 购买」不被另一笔购买打断
+purchase_lock = asyncio.Lock()
 
 
 async def paginate_goods(client: PicixClient, session: dict[str, Any]) -> list[dict[str, Any]]:
@@ -116,7 +119,9 @@ async def buy_good(
     session: dict[str, Any],
     good_id: int,
 ) -> dict[str, Any]:
-    """购买固定商品（幂等）。返回 purchases 表记录。"""
+    """购买固定商品，支付请求只发一次。返回 purchases 表记录：
+    success=已支付；failed=站点明确拒绝；unknown=超时/异常，结果未知（不重试）。
+    """
     good_name, price = "", None
     try:
         for g in await paginate_goods(client, session):
@@ -127,11 +132,8 @@ async def buy_good(
     except PicixError:
         pass  # 商品信息仅用于记录，拉不到不阻塞购买
 
-    cri = secrets.token_hex(16)  # 16 字节随机 hex，与前端 clientRequestId 同格式
-    purchase_id, is_new = store.create_purchase(cri, int(good_id), good_name, price)
-    if not is_new:
-        return store.get_purchase(purchase_id) or {}
-
+    cri = secrets.token_hex(16)  # clientRequestId：站点幂等键，随请求发送并留痕
+    purchase_id, _ = store.create_purchase(cri, int(good_id), good_name, price)
     try:
         resp = await client.mall_pay_good(session, int(good_id), cri)
         order_code = ""
@@ -142,73 +144,15 @@ async def buy_good(
         store.finish_purchase(purchase_id, "success", order_code=order_code or None)
         log.info("购买成功 goodId=%s cri=%s…", good_id, cri[:8])
     except PicixError as e:
-        # 超时/网关错误可能是「已受理但响应丢失」→ unknown，让用户核对订单后处理
-        status = "unknown" if getattr(e, "status", 0) in (0, 502, 503, 504) else "failed"
+        # 传输失败/超时/5xx：响应丢失或服务端内部出错，可能已受理 → unknown 不重试；4xx 才是明确拒绝
+        status = "unknown" if e.status == 0 or e.status >= 500 else "failed"
         store.finish_purchase(purchase_id, status, error=str(e))
-        log.warning("购买失败(%s) goodId=%s: %s", status, good_id, e)
+        log.warning("购买未完成(%s) goodId=%s: %s", status, good_id, e)
     except Exception as e:  # noqa: BLE001
         store.finish_purchase(purchase_id, "unknown", error=repr(e))
         log.warning("购买异常 goodId=%s: %r", good_id, e)
     return store.get_purchase(purchase_id) or {}
 
-
-
-async def reconcile_pending_purchases(
-    store: Store,
-    client: PicixClient,
-    session: dict[str, Any],
-) -> list[dict[str, Any]]:
-    """对账 pending/unknown 购买记录，用订单列表收敛终态。
-
-    匹配规则：订单 goodId 相同且 createdAt 与购买 created_at 相差 10 分钟内。
-    返回仍无法判定的记录列表（本轮不买新包）。
-    """
-    unresolved: list[dict[str, Any]] = []
-    pendings = [
-        p for p in store.list_purchases(limit=50)
-        if p.get("status") in ("pending", "unknown")
-    ]
-    if not pendings:
-        return unresolved
-    try:
-        orders_resp = await client.mall_list_orders(session)
-    except Exception:  # noqa: BLE001 - 对账失败不阻塞，保持原状
-        log.warning("订单列表拉取失败，%d 条购买记录保持未决", len(pendings))
-        return pendings
-    orders = orders_resp.get("items") if isinstance(orders_resp, dict) else None
-    if not isinstance(orders, list):
-        # 订单结构不符合预期 → 不做破坏性判定，保持未决
-        log.warning("订单列表结构异常，%d 条购买记录保持未决", len(pendings))
-        return pendings
-    for p in pendings:
-        match = None
-        for o in orders:
-            if not isinstance(o, dict):
-                continue
-            try:
-                if int(o.get("goodId") or 0) != int(p.get("good_id") or 0):
-                    continue
-            except (TypeError, ValueError):
-                continue
-            o_created = o.get("createdAt") or o.get("created_at") or 0
-            try:
-                o_ts = float(o_created)
-                if o_ts > 1e12:  # 毫秒
-                    o_ts /= 1000.0
-            except (TypeError, ValueError):
-                continue
-            if abs(o_ts - float(p.get("created_at") or 0)) <= 600:
-                match = o
-                break
-        if match is not None:
-            code = str(match.get("orderCode") or match.get("code") or match.get("id") or "")
-            store.finish_purchase(int(p["id"]), "success", order_code=code or None)
-            log.info("对账收敛 purchase=%s → success (订单 %s)", p["id"], code)
-        else:
-            # 订单列表完整拉到但没有匹配 → 该次支付未成功
-            store.finish_purchase(int(p["id"]), "failed", error="对账：订单列表无匹配记录")
-            log.info("对账收敛 purchase=%s → failed", p["id"])
-    return unresolved
 
 async def _list_goods(client: PicixClient, session: dict[str, Any]) -> list[dict[str, Any]]:
     """商品目录；拉不到不阻塞主流程（推送里资源包退化为按次数命名）。"""
@@ -244,8 +188,9 @@ async def ensure_package(
     """流水线商城步骤：可用剩余次数 < 本轮计划解锁数（need）→ 买固定商品。
 
     返回步骤摘要供 runs detail 与推送：remaining（可用剩余次数；列表拉取失败为
-    None）、packages（[{name, remaining, total, expiresAt}]）、need、action、
-    purchase（购买记录）、bought_amount（所购商品的次数）。
+    None）、packages（[{name, remaining, total, expiresAt}]）、need、action
+    （none / bought / failed / unknown / skipped / error，均为终态）、purchase
+    （购买记录）、bought_amount（所购商品的次数）。
     """
     out: dict[str, Any] = {
         "usable_packages": 0,
@@ -271,7 +216,7 @@ async def ensure_package(
 
     if not good_id:
         out["action"] = "skipped"
-        out["error"] = f"资源包剩余 {remaining} 次不足本轮计划 {need} 次，且未配置 mall_good_id，未购买"
+        out["error"] = f"资源包剩余 {remaining} 次，本轮需 {need} 次"
         return out
 
     purchase = await buy_good(store, client, session, good_id)

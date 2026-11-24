@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .mall import buy_good, paginate_goods, paginate_packages
+from .mall import buy_good, paginate_goods, paginate_packages, purchase_lock
 from . import tg as tg_service
 from .picix.client import PicixClient, PicixError
 from .scheduler import Scheduler
@@ -69,7 +69,6 @@ async def lifespan(app: FastAPI):
     scheduler.start()
     app.state.store = store
     app.state.store = store
-    app.state.purchase_lock = asyncio.Lock()
     app.state.scheduler = scheduler
     log.info("picix-assistant 启动完成 data=%s", DATA_DIR)
     catchup = asyncio.create_task(scheduler.startup_catchup())
@@ -323,7 +322,7 @@ async def api_mall_buy(req: BuyRequest):
     store: Store = app.state.store
     session = _require_session(store)
     session = _require_session(store)
-    async with app.state.purchase_lock:
+    async with purchase_lock:
         async with build_client(store) as client:
             purchase = await buy_good(store, client, session, req.good_id)
     return purchase

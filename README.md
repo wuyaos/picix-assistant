@@ -7,7 +7,7 @@ Picix（jav.picix.us）每日任务自动化助手：独立 Docker 应用，Web 
 - **登录管理**：一键生成登录码与 `t.me` 深链，浏览器里点一次 Telegram 确认即完成登录（ECDSA P-256 请求签名，密钥与 token 全程本地存储）；401 自动恢复（Telethon 自动发确认码）
 - **每日任务**：定时执行五阶段流水线——任务申领 → 资源购买 → 解锁 → 回读 → Telegram 推送；`keepalive`/`daily` 任务模板（仅前端预填配置）
 - **解锁策略**：公式化决策 `min(每日1 + 月度节奏X, 单次上限)`，全部完成则跳过；月度截止前 ≤3 天自动冲刺补解；单部失败跳过继续下一部（不消耗额度）
-- **商城自动化**：无可用资源包时自动购买固定商品（幂等键 + 事后对账收敛 pending 订单）；购买记录可追溯
+- **商城自动化**：可用资源包次数不够本轮解锁计划时自动购买固定商品；支付只发一次，买没买成以下一轮的资源包列表为准（不对账、不重试），购买记录可追溯
 - **状态看板**：仪表盘分区式 UI（吸顶导航 + 仪表头条 + 任务/资源包双列 + 最低消费横条 + 今日运行）；配置页 7 分区锚点导航 + 吸底保存
 - **消息通知**：Telegram 保存的消息（复用扫码连接的 Telethon 会话，零配置）；运行结果、会话失效、消费临界（每结算周期 1 条）、购买结果、冲刺提醒，全部带去重
 - **代理**：支持 http/socks5 代理（站点连通性测试按钮）
@@ -55,8 +55,8 @@ wsl -u root -e sh -c "sh /mnt/d/work/project/person/picix-assistant/docker/deplo
 ```bash
 # compose 已参数化镜像名，docker/login 后：
 echo "$GITHUB_PAT" | docker login ghcr.io -u wuyaos --password-stdin   # 私有包需要；包转公开可跳过
-docker pull ghcr.io/wuyaos/picix-assistant:1.2.0
-PICIX_IMAGE=ghcr.io/wuyaos/picix-assistant:1.2.0 docker compose up -d --no-build
+docker pull ghcr.io/wuyaos/picix-assistant:1.2.1
+PICIX_IMAGE=ghcr.io/wuyaos/picix-assistant:1.2.1 docker compose up -d --no-build
 ```
 
 首次启动自动就绪 Chromium（约 1-2 分钟，之后秒级）：卷内缓存 → 种子包 `/tmp/cb.tar.gz` → 在线下载（GitHub Releases 直下免费包约 217MB，无需 license；代理自动复用 `HTTPS_PROXY`，缺省用 `PICIX_PROXY`）。数据在 `./data`，升级仅换镜像 tag。
@@ -90,7 +90,7 @@ CloakBrowser 层：
 
 ## 版本
 
-单一来源：`backend/app/version.py` 的 `APP_VERSION`。改完重建部署，顶栏品牌旁与 `/api/status.version` 自动带出。语义化版本：MINOR=功能/界面迭代，PATCH=修复。当前 `v1.2.0`。
+单一来源：`backend/app/version.py` 的 `APP_VERSION`。改完重建部署，顶栏品牌旁与 `/api/status.version` 自动带出。语义化版本：MINOR=功能/界面迭代，PATCH=修复。当前 `v1.2.1`。
 
 ## 快速开始
 
@@ -157,7 +157,7 @@ API：`GET /api/status`、`POST /api/login/start|poll|logout`、`GET/PUT /api/co
 │   ├── picix/signing.py    # ECDSA P-256 请求签名（PICIX-PROOF/LOGIN-V1）
 │   ├── picix/transport.py  # CloakBrowser 单例传输层（CF 质询自动过）
 │   ├── service.py          # 五阶段流水线 + plan_unlocks + 推送
-│   ├── mall.py             # 商城分页/购买幂等/订单对账
+│   ├── mall.py             # 商城分页/资源包检查/购买
 │   ├── tg.py               # Telethon：扫码连接/自动重登/发通知
 │   ├── scheduler.py        # APScheduler cron + 启动补跑
 │   ├── store.py            # SQLite（kv/config/runs/purchases）

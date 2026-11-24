@@ -8,7 +8,7 @@
      proofKeyId 换成 sessionId，服务端已通过 proofPublicKey 绑定）
 
 每日流水线（顺序，严格五阶段）：
-  ① 任务申领 → ② 资源购买（先对账未决记录，再临界区购买）→
+  ① 任务申领 → ② 资源购买（可用次数不足本轮计划才买）→
   ③ 解锁（plan_unlocks 公式决策，错误三分类）→ ④ 回读（进度+积分+最低消费）→
   ⑤ 消息推送（TG 保存的消息；skipped 不推）。
 
@@ -30,7 +30,7 @@ import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from .mall import ensure_package, reconcile_pending_purchases
+from .mall import ensure_package, purchase_lock
 from .tg import TgError, bot_get_chat_id, bot_send, send_login_confirm
 from .picix.client import PicixClient, PicixError
 from .picix.signing import new_proof_key_id
@@ -45,8 +45,6 @@ CODE_TTL_SECONDS = 600  # 前端 V 常量同量级；过期后重新取码
 UNLOCK_TASK_PREFIXES = ("D_UL", "M_UL")
 SHANGHAI = timezone(timedelta(hours=8))
 
-# 购买临界区：自动补包与手动 /api/mall/buy 共享，防止并发重复扣款
-_purchase_lock = asyncio.Lock()
 
 
 # ---------- 登录 ----------
@@ -328,12 +326,11 @@ async def _notify_consumption(store: Store, mc: dict[str, Any] | None) -> None:
 
 
 _STATUS_LABEL = {"success": ("✅", "运行成功"), "partial": ("⚠️", "部分完成"), "failed": ("❌", "运行失败")}
-_MALL_NOT_BOUGHT = {  # 商城 action → 购买未完成的原因（推送用）
-    "unresolved": "存在未决购买记录，待下轮对账",
+_MALL_NOT_BOUGHT = {  # 商城 action → 购买未完成的原因（推送用）；都是终态，不对账
     "skipped": "未配置购买商品",
     "error": "资源包状态获取失败",
     "failed": "支付未成功",
-    "unknown": "购买结果未知，待下轮对账",
+    "unknown": "支付结果未知",
 }
 
 
@@ -654,36 +651,26 @@ async def _pipeline(
     plan = detail.get("plan") or plan_unlocks(tasks, cfg)  # 整轮重试沿用首次计划
     detail["plan"] = plan
     need = int(plan["total"]) if cfg["unlock_list_ids"] else 0
-    # ② 资源购买（先对账未决记录，再临界区购买）：可用次数不足本轮计划才买
+    # ② 资源购买：可用次数不足本轮计划才买；买没买成以资源包列表为准，不对账（见 mall.buy_good）
     if cfg["mall_enabled"]:
-        async with _purchase_lock:
-            unresolved = await reconcile_pending_purchases(store, client, session)
-            if unresolved:
-                detail["errors"].append(
-                    f"存在 {len(unresolved)} 条未决购买记录，本轮不买新包"
-                )
-                mall_result: dict[str, Any] = {
-                    "action": "unresolved",
-                    "usable_packages": 0,
-                    "need": need,
-                    "error": "存在未决购买记录，待下轮对账",
-                }
-            else:
-                mall_result = await ensure_package(
-                    store, client, session, int(cfg["mall_good_id"]), need=need
-                )
+        async with purchase_lock:  # 与手动 /api/mall/buy 互斥，「查包 → 购买」不被打断
+            mall_result = await ensure_package(
+                store, client, session, int(cfg["mall_good_id"]), need=need
+            )
         detail["mall"] = mall_result
         detail["steps"].append(
             f"商城：可用资源包 {mall_result.get('usable_packages')} 个，剩余 {mall_result.get('remaining')} 次，"
             f"本轮需 {need} 次，动作 {mall_result.get('action')}"
         )
-        if mall_result.get("error"):
-            detail["errors"].append(f"{mall_result['error']}（次数不足的部分走积分解锁）")
-        elif mall_result.get("action") in ("failed", "unknown"):
+        action = mall_result.get("action")
+        if action in _MALL_NOT_BOUGHT:
             # 没买成而本轮次数不够：解锁会退回按积分扣费，计入错误让状态变 partial、推送里可见
             purchase = mall_result.get("purchase") or {}
-            why = _MALL_NOT_BOUGHT.get(mall_result["action"]) or mall_result["action"]
-            detail["errors"].append(f"资源包购买未完成（{why}）：{purchase.get('error') or '原因未知'} → 不足部分走积分解锁")
+            reason = purchase.get("error") or mall_result.get("error") or "原因未知"
+            hint = "；请到站点核对订单" if action == "unknown" else ""
+            detail["errors"].append(
+                f"资源包购买未完成（{_MALL_NOT_BOUGHT[action]}）：{reason} → 不足部分走积分解锁{hint}"
+            )
 
     # ③ 解锁（公式决策 + 错误三分类）
     total = int(plan["total"])

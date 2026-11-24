@@ -413,7 +413,7 @@ onUnmounted(() => {
         <h3>⑥ 商城固定购买</h3>
         <label class="mall-toggle">
           <input v-model="form.mall_enabled" type="checkbox" />
-          <span>资源包没了就自动购买下面的固定商品</span>
+          <span>本轮资源包次数不够时自动购买下面的固定商品</span>
         </label>
         <label class="field mall-field">
           <span>固定购买商品</span>
@@ -426,8 +426,8 @@ onUnmounted(() => {
         </label>
         <p v-if="!goods.length" class="muted">登录后可拉取商品列表。</p>
         <p class="muted">
-          仅任务模板「每日任务」且开关开启时执行；判定标准为无任何未过期且有剩余额度的资源包。
-          购买前会先对账未决记录（订单列表核对），避免重复购买；幂等键先入库再请求。
+          仅任务模板「每日任务」且开关开启时执行；可用资源包剩余次数不够本轮解锁计划时购买。
+          支付请求每轮只发一次；买没买成以下一轮的资源包列表为准，列表里已有新包就不再买。
         </p>
       </section>
 

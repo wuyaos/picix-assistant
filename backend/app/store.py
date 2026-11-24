@@ -21,7 +21,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "unlock_list_ids": [],  # 解锁影片来源片单（按顺序）
     "max_unlocks_per_run": 2,  # 单次解锁上限（含冲刺补解），恒定生效
     "monthly_unlocks_per_day": 1,  # 月度任务每日额外解锁节奏（0-5，0=只靠每日任务搭车）
-    "mall_enabled": False,  # 固定购买开关（资源包没了就买）
+    "mall_enabled": False,  # 固定购买开关（本轮资源包次数不够时买）
     "mall_good_id": 0,  # 固定购买的商品 id（0=未设置）
     "proxy": "",  # httpx 代理，如 http://127.0.0.1:7890
     "tg_api_id": 0,  # Telegram API 凭据（my.telegram.org 申请）
