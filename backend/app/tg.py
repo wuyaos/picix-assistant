@@ -283,8 +283,10 @@ async def send_login_confirm(store: Store, code: str) -> dict[str, Any]:
 
 
 
-async def bot_send(store: Store, text: str, target: int | None = None) -> dict[str, Any]:
-    """经 Bot API 发送推送（唯一推送通道）。target 缺省用配置 bot_chat_id。"""
+async def bot_send(
+    store: Store, text: str, target: int | None = None, parse_mode: str | None = None
+) -> dict[str, Any]:
+    """经 Bot API 发送推送（唯一推送通道）。target 缺省用配置 bot_chat_id；parse_mode 如 "HTML"。"""
     cfg = store.get_config()
     token = (cfg.get("bot_token") or "").strip()
     chat_id = target if target is not None else int(cfg.get("bot_chat_id") or 0)
@@ -295,6 +297,8 @@ async def bot_send(store: Store, text: str, target: int | None = None) -> dict[s
     proxy = (cfg.get("proxy") or "").strip() or None
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     payload = {"chat_id": chat_id, "text": text}
+    if parse_mode:
+        payload["parse_mode"] = parse_mode
     try:
         async with httpx.AsyncClient(proxy=proxy, timeout=10) as c:
             r = await c.post(url, json=payload)

@@ -1,7 +1,8 @@
 """商城固定购买与资源包检查。
 
 设计（用户确认的简化版）：
-- 触发条件一条：Packages/listMine 无任何「未过期且有剩余额度」的资源包 → 购买固定商品
+- 触发条件一条：可用资源包剩余次数 < 本轮计划解锁数 → 购买固定商品
+  （只判「有没有包」不够：剩 1 次而本轮解锁 2 部时，第 2 部会被站点按积分扣费）
 - 幂等：clientRequestId 先入库（purchases 表）再请求 payGood；
   超时/未知结果标记 unknown（「已受理但响应丢失」）。
   注意：不存在同键重试路径，真正的兜底是下一轮 ensure_package
@@ -58,22 +59,38 @@ async def paginate_packages(client: PicixClient, session: dict[str, Any]) -> lis
     return items
 
 
-def _expired(expired_at: Any) -> bool:
-    """expiredAt 兼容 epoch 秒/毫秒与 ISO 字符串；空值视为永久。"""
-    if expired_at in (None, "", 0):
-        return False
-    if isinstance(expired_at, (int, float)):
-        v = float(expired_at)
-        if v > 1e12:  # 毫秒
-            v /= 1000.0
-        return v <= time.time()
+def _to_epoch(value: Any) -> float | None:
+    """时间值归一为 epoch 秒：兼容毫秒与 ISO 字符串；空值（永久）返回 None。"""
+    if value in (None, "", 0):
+        return None
+    if isinstance(value, (int, float)):
+        v = float(value)
+        return v / 1000.0 if v > 1e12 else v
     try:
-        dt = datetime.fromisoformat(str(expired_at).replace("Z", "+00:00"))
-        if dt.tzinfo is None:
-            dt = dt.astimezone()
-        return dt.timestamp() <= time.time()
+        dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
     except ValueError:
-        return False
+        return None
+    if dt.tzinfo is None:
+        dt = dt.astimezone()
+    return dt.timestamp()
+
+
+def _expired(expired_at: Any) -> bool:
+    """过期判定；空值或无法解析视为未过期。"""
+    v = _to_epoch(expired_at)
+    return v is not None and v <= time.time()
+
+
+def _int(value: Any) -> int:
+    try:
+        return int(float(value or 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _remaining(p: dict[str, Any]) -> int:
+    """资源包剩余次数（total/used 的单位是解锁次数，不是流量）。"""
+    return max(0, _int(p.get("total")) - _int(p.get("used")))
 
 
 def package_usable(p: dict[str, Any]) -> bool:
@@ -193,14 +210,50 @@ async def reconcile_pending_purchases(
             log.info("对账收敛 purchase=%s → failed", p["id"])
     return unresolved
 
+async def _list_goods(client: PicixClient, session: dict[str, Any]) -> list[dict[str, Any]]:
+    """商品目录；拉不到不阻塞主流程（推送里资源包退化为按次数命名）。"""
+    try:
+        return await paginate_goods(client, session)
+    except PicixError:
+        return []
+
+
+def _package_view(p: dict[str, Any], goods: list[dict[str, Any]]) -> dict[str, Any]:
+    """资源包摘要。包本身不带名称，按次数（total）对商品目录的 amount 反查。"""
+    total = _int(p.get("total"))
+    name = next(
+        (str(g.get("name")) for g in goods if _int(g.get("amount")) == total and g.get("name")),
+        "",
+    )
+    return {
+        "name": name or (f"{total} 次资源包" if total else "资源包"),
+        "remaining": _remaining(p),
+        "total": total,
+        "expiresAt": _to_epoch(p.get("expiredAt")),
+    }
+
+
 async def ensure_package(
     store: Store,
     client: PicixClient,
     session: dict[str, Any],
     good_id: int,
+    *,
+    need: int,
 ) -> dict[str, Any]:
-    """流水线商城步骤：无可用资源包 → 买固定商品。返回步骤摘要供 runs detail。"""
-    out: dict[str, Any] = {"usable_packages": 0, "action": "none"}
+    """流水线商城步骤：可用剩余次数 < 本轮计划解锁数（need）→ 买固定商品。
+
+    返回步骤摘要供 runs detail 与推送：remaining（可用剩余次数；列表拉取失败为
+    None）、packages（[{name, remaining, total, expiresAt}]）、need、action、
+    purchase（购买记录）、bought_amount（所购商品的次数）。
+    """
+    out: dict[str, Any] = {
+        "usable_packages": 0,
+        "remaining": None,
+        "packages": [],
+        "need": need,
+        "action": "none",
+    }
     try:
         packages = await paginate_packages(client, session)
     except PicixError as e:
@@ -208,17 +261,23 @@ async def ensure_package(
         out["error"] = f"资源包列表拉取失败: {e}"
         return out
     usable = [p for p in packages if package_usable(p)]
+    remaining = sum(_remaining(p) for p in usable)
     out["usable_packages"] = len(usable)
-    if usable:
-        out["action"] = "none"  # 还有可用包，不买
-        return out
+    out["remaining"] = remaining
+    goods = await _list_goods(client, session)
+    out["packages"] = [_package_view(p, goods) for p in usable]
+    if remaining >= need:
+        return out  # 够本轮用，不买
 
     if not good_id:
         out["action"] = "skipped"
-        out["error"] = "无可用资源包但未配置 mall_good_id，跳过购买"
+        out["error"] = f"资源包剩余 {remaining} 次不足本轮计划 {need} 次，且未配置 mall_good_id，未购买"
         return out
 
     purchase = await buy_good(store, client, session, good_id)
     out["action"] = "bought" if purchase.get("status") == "success" else purchase.get("status")
     out["purchase"] = purchase
+    out["bought_amount"] = next(
+        (_int(g.get("amount")) for g in goods if _int(g.get("id")) == int(good_id)), 0
+    )
     return out

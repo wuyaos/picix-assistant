@@ -23,6 +23,7 @@
 from __future__ import annotations
 
 import asyncio
+import html
 import logging
 import math
 import time
@@ -279,10 +280,10 @@ def _shanghai_date() -> str:
     return datetime.now(SHANGHAI).strftime("%Y-%m-%d")
 
 
-async def _push(store: Store, text: str) -> bool:
-    """经 Bot 推送（唯一通道）。失败返回 False（不抛，不阻塞流水线结果）。"""
+async def _push(store: Store, text: str, parse_mode: str | None = None) -> bool:
+    """经 Bot 推送（唯一通道）。parse_mode="HTML" 时 text 须已转义。失败返回 False（不抛，不阻塞流水线结果）。"""
     try:
-        await bot_send(store, text)
+        await bot_send(store, text, parse_mode=parse_mode)
         return True
     except Exception as e:  # noqa: BLE001 — 推送失败只记日志
         log.warning("推送失败: %s", e)
@@ -326,29 +327,153 @@ async def _notify_consumption(store: Store, mc: dict[str, Any] | None) -> None:
     await _push(store, f"最低消费临界：距结算不足 3 天，预估缺口 {shortfall} 分，请补足。")
 
 
-def _fmt_summary(detail: dict[str, Any], status: str) -> str:
-    """运行结果汇总文本（skipped 不推送，不会走到这里）。"""
-    lines = [f"Picix 运行结束 [{status}] trigger={detail.get('trigger')}"]
+_STATUS_LABEL = {"success": ("✅", "运行成功"), "partial": ("⚠️", "部分完成"), "failed": ("❌", "运行失败")}
+_MALL_NOT_BOUGHT = {  # 商城 action → 购买未完成的原因（推送用）
+    "unresolved": "存在未决购买记录，待下轮对账",
+    "skipped": "未配置购买商品",
+    "error": "资源包状态获取失败",
+    "failed": "支付未成功",
+    "unknown": "购买结果未知，待下轮对账",
+}
+
+
+def _e(value: Any) -> str:
+    """Telegram HTML 文本转义（标题/错误信息可能含 < > &）。"""
+    return html.escape(str(value if value is not None else ""), quote=False)
+
+
+def _num(value: Any) -> str:
+    """数值展示：去掉多余小数位；非法值原样输出。"""
+    try:
+        return f"{float(value):g}"
+    except (TypeError, ValueError):
+        return str(value)
+
+
+def _clip(value: Any, n: int) -> str:
+    s = str(value or "")
+    return s if len(s) <= n else s[:n] + "…"
+
+
+def _fmt_accepted(detail: dict[str, Any]) -> str:
+    """本轮申领的任务：名称×目标（奖励积分）。旧版记录只存 code 字符串，兼容。"""
+    items = []
+    for a in detail["accepted"]:
+        if not isinstance(a, dict):
+            items.append(_e(a))
+            continue
+        s = _e(a.get("name") or a.get("code"))
+        if a.get("target"):
+            s += f"×{_num(a['target'])}"
+        if a.get("rewardPoints"):
+            s += f"（+{_num(a['rewardPoints'])}）"
+        items.append(s)
+    return "、".join(items)
+
+
+def _fmt_progress(snapshot: list[dict[str, Any]]) -> str:
+    """已申领任务的进度（未申领不列）：名称 进度/目标，当期完成打勾。"""
+    parts = []
+    for t in snapshot:
+        prog = t.get("progress")
+        if prog is None:
+            continue
+        tgt = t.get("progressTarget") or t.get("target")
+        done = bool(t.get("finishedAt"))
+        if not done and tgt:
+            try:
+                done = float(prog) >= float(tgt)
+            except (TypeError, ValueError):
+                pass
+        name = _e(t.get("name") or t.get("code"))
+        target_text = _num(tgt) if tgt is not None else "?"
+        parts.append(f"{name} {_num(prog)}/{target_text}" + (" ✅" if done else ""))
+    return "｜".join(parts)
+
+
+def _fmt_mall(mall: dict[str, Any]) -> str:
+    """商城一步的结果：够用 → 现存包；不够且买了 → 新购；不够没买成 → 警示。"""
+    action = mall.get("action")
+    remaining = mall.get("remaining")
+    need = int(mall.get("need") or 0)
+    stock = "、".join(
+        f"{_e(p.get('name'))} 剩 {p.get('remaining')}/{p.get('total')} 次"
+        + (
+            f"（{datetime.fromtimestamp(p['expiresAt'], SHANGHAI):%m-%d} 到期）"
+            if p.get("expiresAt")
+            else "（长期）"
+        )
+        for p in mall.get("packages") or []
+    )
+    if action == "bought":
+        purchase = mall.get("purchase") or {}
+        amount = int(mall.get("bought_amount") or 0)
+        name = purchase.get("good_name") or f"商品#{purchase.get('good_id')}"
+        text = f"已购「{_e(name)}」"
+        if amount:
+            text += f"{amount} 次"
+        if purchase.get("price") is not None:
+            text += f"（{_num(purchase['price'])} 分）"
+        if remaining is not None:
+            text += f"，可用 {remaining + amount} 次"
+        return "资源包：" + text
+    if not stock:
+        stock = "无可用包" if remaining == 0 else "状态未知"
+    if action == "none":
+        # 无包且本轮无解锁计划时不买：要解锁时再买，不白白占用有效期
+        if remaining == 0 and need == 0:
+            stock += "（本轮无解锁计划，未购买）"
+        return f"资源包：{stock}"
+    reason = _MALL_NOT_BOUGHT.get(action) or str(action)
+    if remaining is None:
+        return f"资源包：⚠️ 状态未知，本轮未买新包（{reason}）→ 次数不足时将按积分解锁"
+    return (
+        f"资源包：⚠️ {stock}，不足本轮 {need} 次，未购成（{reason}）"
+        "→ 不足部分将按积分解锁"
+    )
+
+
+def _fmt_summary(detail: dict[str, Any], status: str, points_prev: Any = None) -> str:
+    """运行结果汇总（Telegram HTML）。skipped 不推送，不会走到这里。
+
+    401 自动恢复后整轮重试，不算本轮错误（见 _handle_auth_failure），这里不再出现。
+    """
+    icon, label = _STATUS_LABEL.get(status, ("ℹ️", status))
+    lines = [f"<b>{icon} Picix {_e(label)}</b>"]
+    if detail["accepted"]:
+        lines.append("<b>📥 领取：</b>" + _fmt_accepted(detail))
+    progress = _fmt_progress(detail.get("tasks_snapshot") or [])
+    if progress:
+        lines.append("<b>📋 任务：</b>" + progress)
     plan = detail.get("plan") or {}
     if plan:
-        lines.append(
-            f"计划 {plan.get('total')}（{plan.get('reason')}）｜确认解锁 {detail.get('confirmed_unlocks')}"
-        )
-    if detail["accepted"]:
-        lines.append("领取: " + ", ".join(detail["accepted"]))
+        total = int(plan.get("total") or 0)
+        done = int(detail.get("confirmed_unlocks") or 0)
+        lines.append(f"<b>🎯 计划</b> {total}（{_e(plan.get('reason'))}）｜解锁成功 {done}/{total}")
     for u in detail["unlocks"][:10]:
-        mark = "[OK]" if u.get("ok") else "[X]"
-        kind = f"({u.get('kind')})" if u.get("kind") else ""
-        lines.append(f"解锁 {mark} movieId={u.get('movieId')} {kind}")
+        mark = "✅" if u.get("ok") else "❌"
+        name = _clip(u.get("title"), 40) or f"movieId={u.get('movieId')}"
+        lines.append(f"🔓 {mark} {_e(name)}（#{u.get('movieId')}）")
     if len(detail["unlocks"]) > 10:
-        lines.append(f"…共 {len(detail['unlocks'])} 条解锁记录")
+        lines.append(f"🔓 …共 {len(detail['unlocks'])} 条解锁记录")
     mall = detail.get("mall")
-    if isinstance(mall, dict):
-        lines.append(f"商城: {mall.get('action')} 可用包 {mall.get('usable_packages')}")
+    if isinstance(mall, dict) and mall:
+        lines.append("📦 " + _fmt_mall(mall))
     if detail.get("points") is not None:
-        lines.append(f"积分: {detail.get('points')}")
+        points = f"<b>💰 积分：</b>{_num(detail['points'])}"
+        if points_prev is not None:
+            try:
+                delta = int(float(detail["points"]) - float(points_prev))
+            except (TypeError, ValueError):
+                delta = 0
+            if delta:
+                points += f"（{'+' if delta > 0 else ''}{delta}）"
+        lines.append(points)
     if detail["errors"]:
-        lines.append("错误(" + str(len(detail["errors"])) + "): " + "; ".join(detail["errors"][:5]))
+        lines.append(
+            "<b>⚠️ 错误(" + str(len(detail["errors"])) + ")：</b>"
+            + "；".join(_e(e) for e in detail["errors"][:5])
+        )
     return "\n".join(lines)
 
 
@@ -361,11 +486,17 @@ async def send_notify_test(store: Store) -> dict[str, Any]:
 # ---------- 401 统一恢复（）----------
 
 async def _handle_auth_failure(store: Store, client: PicixClient, detail: dict[str, Any]) -> bool:
-    """标记会话失效（不清除，保留旧会话供人工核对），尝试自动恢复并推送提醒。"""
+    """标记会话失效（不清除，保留旧会话供人工核对），尝试自动恢复并推送提醒。
+
+    先把 401 记进 errors（恢复中途崩溃时运行记录仍能说明原因）；恢复成功则移除——
+    上层会整轮重试，结果以重试为准，401 不算本轮错误。恢复失败才留在 errors。
+    """
     store.put("session_invalid", time.time())
-    detail["errors"].append("会话失效（401）")
+    auth_err = "会话失效（401）"
+    detail["errors"].append(auth_err)
     recovered = await auto_relogin(store, client)
     if recovered:
+        detail["errors"].remove(auth_err)
         detail["steps"].append("TG 自动重新登录成功")
     else:
         detail["errors"].append("自动恢复失败，请手动登录")
@@ -409,12 +540,15 @@ async def run_daily(
             if not session:
                 detail["errors"].append("会话丢失，终止本轮")
                 break
+            err_mark = len(detail["errors"])
             try:
                 plan, status = await _pipeline(store, client, session, cfg, detail, force)
                 break
             except PicixError as e:
                 if e.status == 401 and auth_budget > 0:
                     auth_budget -= 1
+                    # 整轮重试：本次失败尝试里记下的错误已被重试取代
+                    del detail["errors"][err_mark:]
                     if await _handle_auth_failure(store, client, detail):
                         detail["steps"].append("会话已恢复，整轮重试")
                         continue
@@ -434,10 +568,21 @@ async def run_daily(
 
     # ⑤ 推送（skipped 不推；force 时即便 skipped 判定也推）
     if status != "skipped":
-        text = _fmt_summary(detail, status)
+        # 积分环比：取上一条带积分的运行（手动/定时都算；skipped 没有积分）
+        prev_points = next(
+            (
+                r["detail"].get("points")
+                for r in store.list_runs(limit=10)
+                if r.get("id") != run_id
+                and isinstance(r.get("detail"), dict)
+                and r["detail"].get("points") is not None
+            ),
+            None,
+        )
+        text = _fmt_summary(detail, status, prev_points)
         if plan and plan.get("sprint"):
-            text = "【冲刺】" + text
-        if await _push(store, text):
+            text = "🚀【冲刺】" + text
+        if await _push(store, text, "HTML"):
             detail["notified"] = True
         await _notify_consumption(store, detail.get("minimum_consumption"))
 
@@ -469,14 +614,27 @@ async def _pipeline(
         if not t.get("progress") and code in accept_codes:
             try:
                 await client.accept_task(session, code)
-                detail["accepted"].append(code)
+                detail["accepted"].append(
+                    {
+                        "code": code,
+                        "name": str(t.get("name") or code),
+                        "target": t.get("target") or (t.get("progress") or {}).get("target"),
+                        "rewardPoints": t.get("rewardPoints"),
+                    }
+                )
                 log.info("领取任务 %s", code)
             except PicixError as e:
+                if e.status == 401:
+                    raise  # 会话失效交给上层统一恢复，不就地记错
                 detail["errors"].append(f"领取 {code} 失败: {e}")
     if detail["accepted"]:
         tasks = await _collect_tasks_async(client, session)
 
-    # ② 资源购买（先对账未决记录，再临界区购买）
+    # 解锁计划要在购买前算出：资源包按本轮计划数补足（见 mall.ensure_package）
+    plan = detail.get("plan") or plan_unlocks(tasks, cfg)  # 整轮重试沿用首次计划
+    detail["plan"] = plan
+    need = int(plan["total"]) if cfg["unlock_list_ids"] else 0
+    # ② 资源购买（先对账未决记录，再临界区购买）：可用次数不足本轮计划才买
     if cfg["mall_enabled"]:
         async with _purchase_lock:
             unresolved = await reconcile_pending_purchases(store, client, session)
@@ -485,28 +643,34 @@ async def _pipeline(
                     f"存在 {len(unresolved)} 条未决购买记录，本轮不买新包"
                 )
                 mall_result: dict[str, Any] = {
-                    "action": "skipped",
+                    "action": "unresolved",
                     "usable_packages": 0,
+                    "need": need,
                     "error": "存在未决购买记录，待下轮对账",
                 }
             else:
                 mall_result = await ensure_package(
-                    store, client, session, int(cfg["mall_good_id"])
+                    store, client, session, int(cfg["mall_good_id"]), need=need
                 )
         detail["mall"] = mall_result
         detail["steps"].append(
-            f"商城：可用资源包 {mall_result.get('usable_packages')} 个，动作 {mall_result.get('action')}"
+            f"商城：可用资源包 {mall_result.get('usable_packages')} 个，剩余 {mall_result.get('remaining')} 次，"
+            f"本轮需 {need} 次，动作 {mall_result.get('action')}"
         )
         if mall_result.get("error"):
             detail["errors"].append(mall_result["error"])
+        elif mall_result.get("action") in ("failed", "unknown"):
+            # 没买成而本轮次数不够：解锁会退回按积分扣费，计入错误让状态变 partial、推送里可见
+            purchase = mall_result.get("purchase") or {}
+            why = _MALL_NOT_BOUGHT.get(mall_result["action"]) or mall_result["action"]
+            detail["errors"].append(f"资源包购买未完成（{why}）：{purchase.get('error') or '原因未知'}")
 
     # ③ 解锁（公式决策 + 错误三分类）
-    plan = plan_unlocks(tasks, cfg)
     total = int(plan["total"])
     detail["steps"].append(
         f"解锁计划 {total}（{plan['reason']}），上限 {plan['cap']}"
     )
-    done = 0
+    done = sum(1 for u in detail["unlocks"] if u.get("ok"))  # 整轮重试时接续本 run 已解锁的
     unknown_streak = 0
     if total > 0:
         if not cfg["unlock_list_ids"]:
@@ -518,6 +682,8 @@ async def _pipeline(
                 try:
                     ml = await client.get_movie_list(session, int(list_id))
                 except PicixError as e:
+                    if e.status == 401:
+                        raise  # 同上：401 交给上层恢复
                     detail["errors"].append(f"片单 {list_id} 拉取失败: {e}")
                     continue
                 movies = (
@@ -531,6 +697,7 @@ async def _pipeline(
                     if not isinstance(m, dict) or m.get("isUnlock"):
                         continue
                     movie_id = m.get("id") or m.get("movieId")
+                    title = str(m.get("title") or "")
                     if not movie_id:
                         continue
                     link_id = int(m.get("movieListLinkId") or 0)
@@ -545,6 +712,7 @@ async def _pipeline(
                         detail["unlocks"].append(
                             {
                                 "movieId": movie_id,
+                                "title": title,
                                 "listId": list_id,
                                 "movieListLinkId": link_id,
                                 "ok": True,
@@ -557,10 +725,13 @@ async def _pipeline(
                             link_id,
                         )
                     except PicixError as e:
+                        if e.status == 401:
+                            raise  # 同上：401 交给上层恢复
                         # 明确业务拒绝（冷却/积分/权限/片单限制）→ 跳过该影片继续
                         detail["unlocks"].append(
                             {
                                 "movieId": movie_id,
+                                "title": title,
                                 "listId": list_id,
                                 "movieListLinkId": link_id,
                                 "ok": False,
@@ -575,6 +746,7 @@ async def _pipeline(
                         detail["unlocks"].append(
                             {
                                 "movieId": movie_id,
+                                "title": title,
                                 "listId": list_id,
                                 "movieListLinkId": link_id,
                                 "ok": False,
